@@ -1,0 +1,1 @@
+/home/uprootiny/coggy/target/debug/libcoggy.rlib: /home/uprootiny/coggy/src/atom.rs /home/uprootiny/coggy/src/atomspace.rs /home/uprootiny/coggy/src/cogloop.rs /home/uprootiny/coggy/src/ecan.rs /home/uprootiny/coggy/src/lib.rs /home/uprootiny/coggy/src/ontology.rs /home/uprootiny/coggy/src/parse.rs /home/uprootiny/coggy/src/pln.rs /home/uprootiny/coggy/src/tikkun.rs

@@ -1,0 +1,7 @@
+[package]
+name = "coggy"
+version = "0.1.0"
+edition = "2021"
+description = "Coggy — cognitive architecture with AtomSpace, PLN, and ECAN"
+
+[dependencies]
