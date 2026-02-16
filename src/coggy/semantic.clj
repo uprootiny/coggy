@@ -36,7 +36,13 @@
   [text]
   (or
     ;; Try ```semantic ... ``` block
-    (when-let [match (re-find #"(?s)```semantic\n(.*?)```" text)]
+    (when-let [match (re-find #"(?s)```semantic\s*\n(.*?)```" text)]
+      (try
+        (read-string (second match))
+        (catch Exception _ nil)))
+
+    ;; Try inline semantic fence on one line
+    (when-let [match (re-find #"(?s)```semantic\s*(\{.*?\})\s*```" text)]
       (try
         (read-string (second match))
         (catch Exception _ nil)))
@@ -61,12 +67,18 @@
   "Heuristic fallback when no semantic block is emitted.
    Extracts lightweight concepts so the pipeline stays productive."
   [text]
-  (let [tokens (->> (str/split (str/lower-case (or text "")) #"\s+")
+  (let [clean (-> (str/lower-case (or text ""))
+                  ;; Remove fenced trace/semantic blocks to avoid self-parsing boilerplate.
+                  (str/replace #"(?s)```.*?```" " ")
+                  (str/replace #"`" " "))
+        tokens (->> (str/split clean #"\s+")
                     (map #(str/replace % #"[^a-z0-9-]" ""))
                     (remove #(or (< (count %) 3)
                                  (#{"the" "and" "for" "with" "this" "that" "have" "from"
                                     "were" "been" "into" "your" "about" "what" "when" "where"
-                                    "which" "then" "will" "would" "could" "should" "must"} %)))
+                                    "which" "then" "will" "would" "could" "should" "must"
+                                    "parse" "ground" "attend" "infer" "reflect"
+                                    "coggy-trace" "semantic" "stv"} %)))
                     distinct
                     (take 8)
                     vec)]
@@ -91,18 +103,59 @@
       (str/replace #"[^a-z0-9-]" "")
       (str/replace #"s$" "")))  ;; naive singular — good enough
 
+(def concept-aliases
+  {"inference" "reasoning"
+   "infer" "reasoning"
+   "oracle" "llm"
+   "logician" "reasoning"
+   "atomspace" "ontology"
+   "representation" "ontology"
+   "mode-router" "attention"
+   "select-mode" "attention"
+   "control-locu" "attention"
+   "temporal-stance" "trace"
+   "emulation" "phantasm"
+   "emulate" "phantasm"
+   "simulator" "phantasm"
+   "actor" "human"
+   "partner" "human"
+   "organism" "hyle"
+   "instrument" "form"
+   "prompt-chain" "trace"
+   "harnes" "harness"})
+
+(defn canonical-concept
+  "Apply typo repair and ontology aliases to concept text."
+  [s]
+  (let [n (normalize-concept s)
+        repaired (-> n
+                     (str/replace #"-locu$" "-locus")
+                     (str/replace #"harnes$" "harness"))]
+    (get concept-aliases repaired repaired)))
+
 (defn normalize-semantic
   "Normalize a semantic block: canonicalize concept names."
   [semantic]
   (when semantic
     (-> semantic
-        (update :concepts (fn [cs] (mapv normalize-concept (or cs []))))
+        (update :concepts (fn [cs]
+                            (->> (or cs [])
+                                 (map canonical-concept)
+                                 (remove #(or (< (count %) 3)
+                                              (#{"coggy-trace" "parse" "ground" "attend" "infer" "reflect"} %)))
+                                 distinct
+                                 (take 7)
+                                 vec)))
         (update :relations (fn [rs]
-                             (mapv (fn [r]
-                                     (-> r
-                                         (update :a normalize-concept)
-                                         (update :b normalize-concept)))
-                                   (or rs [])))))))
+                             (->> (or rs [])
+                                  (map (fn [r]
+                                         (-> r
+                                             (update :a canonical-concept)
+                                             (update :b canonical-concept))))
+                                  (remove (fn [r] (= (:a r) (:b r))))
+                                  distinct
+                                  (take 5)
+                                  vec))))))
 
 ;; =============================================================================
 ;; Grounding — match against AtomSpace
@@ -150,23 +203,36 @@
 (defn commit-semantics!
   "Commit validated semantics to AtomSpace + attention bank."
   [space bank semantic grounding]
-  (let [novel-concepts (:novel grounding)]
+  (let [novel-concepts (:novel grounding)
+        funds (:sti-funds @bank)
+        stim-scale (cond
+                     (> funds 40.0) 1.0
+                     (> funds 15.0) 0.65
+                     (> funds 0.0) 0.4
+                     (> funds -40.0) 0.2
+                     :else 0.08)
+        decay-rate (cond
+                     (< funds -80.0) 0.45
+                     (< funds -40.0) 0.32
+                     (< funds 0.0) 0.22
+                     :else 0.1)]
     ;; Add novel concepts
     (doseq [c novel-concepts]
       (as/add-atom! space (as/concept c (as/stv 0.6 0.3))))
 
     ;; Stimulate all mentioned concepts
     (doseq [c (:concepts semantic)]
-      (let [k (keyword (normalize-concept c))]
+      (let [k (keyword (canonical-concept c))]
         (att/stimulate! bank k
-                        (if (some #{c} (:grounded grounding))
-                          8.0   ;; grounded = familiar = moderate boost
-                          12.0)))) ;; novel = needs attention
+                        (* stim-scale
+                           (if (some #{c} (:grounded grounding))
+                             8.0   ;; grounded = familiar = moderate boost
+                             12.0))))) ;; novel = needs attention
 
     ;; Add relations as links
     (doseq [r (:relations semantic)]
-      (let [source (as/concept (normalize-concept (:a r)))
-            target (as/concept (normalize-concept (:b r)))
+      (let [source (as/concept (canonical-concept (:a r)))
+            target (as/concept (canonical-concept (:b r)))
             link (case (keyword (or (:type r) "relates"))
                    :inherits   (as/inheritance source target (as/stv 0.7 0.4))
                    :causes     (as/implication source target (as/stv 0.6 0.3))
@@ -177,7 +243,7 @@
         (as/add-link! space link)))
 
     ;; Decay and update focus
-    (att/decay! bank 0.1)
+    (att/decay! bank decay-rate)
     (att/update-focus! bank)))
 
 ;; =============================================================================
@@ -191,8 +257,29 @@
          :grounding-rates []     ;; last N rates
          :relation-rates []
          :vacuum-triggers 0
+         :budget-exhaustions 0
          :rescue-successes 0
          :last-failure nil}))
+
+(defn metrics-state
+  "Raw semantic metrics for persistence."
+  []
+  @metrics)
+
+(defn restore-metrics!
+  "Restore semantic metrics from persisted snapshot."
+  [m]
+  (reset! metrics
+          (merge {:turns 0
+                  :parser-hits 0
+                  :parser-misses 0
+                  :grounding-rates []
+                  :relation-rates []
+                  :vacuum-triggers 0
+                  :budget-exhaustions 0
+                  :rescue-successes 0
+                  :last-failure nil}
+                 (or m {}))))
 
 (defn record-metrics!
   "Record metrics for this turn."
@@ -226,6 +313,7 @@
      :avg-grounding-rate (avg-rate (:grounding-rates m))
      :avg-relation-rate (avg-rate (:relation-rates m))
      :vacuum-triggers (:vacuum-triggers m)
+     :budget-exhaustions (:budget-exhaustions m)
      :last-failure (:last-failure m)}))
 
 ;; =============================================================================
@@ -257,7 +345,7 @@
      :reason "concepts grounded but no relations matched"
      :recovery :extend-relations}
 
-    (< (:sti-funds @bank) 5.0)
+    (< (:sti-funds @bank) -120.0)
     {:type :budget-exhausted
      :reason "ECAN funds depleted"
      :recovery :reset-attention}
@@ -313,6 +401,10 @@
  :intent {:type :question :target \"topic\"}
  :confidence 0.7}
 ```
+Contract rules:
+- keep concepts canonical and reusable across turns
+- include at least one relation, even if weak/conflicted
+- prefer architecture-internal concepts (ontology, attention, reasoning, trace, human, llm, hyle, form, phantasm) when relevant
 Even if uncertain, always emit concepts and relations with low confidence.
 Never emit an empty structure. Guess if you must.")
 
@@ -342,6 +434,8 @@ Never emit an empty structure. Guess if you must.")
 
     ;; Record metrics
     (record-metrics! semantic concept-ground relation-ground)
+    (when (= :budget-exhausted (:type diagnosis))
+      (swap! metrics update :budget-exhaustions (fnil inc 0)))
 
     ;; Commit if we have anything
     (when (and semantic (seq (:concepts semantic)))

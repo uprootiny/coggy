@@ -25,10 +25,54 @@ When uncertain, state what authority is missing and what fact pattern would disa
      {:type :causes :a "occluded-facts" :b "uncertainty"}
      {:type :causes :a "citation-grounding" :b "auditability"}]
     :strategies
-    ["authority-first grounding"
-     "jurisdiction partitioning"
-     "adversarial occlusion tests"
-     "delta-first disagreement tracing"]}
+   ["authority-first grounding"
+    "jurisdiction partitioning"
+    "adversarial occlusion tests"
+    "delta-first disagreement tracing"]}
+
+   :ibid-legal
+   {:name "IBID Legal Reasoning Engine"
+    :prompt
+    "Active domain: IBID legal reasoning engine.
+Build explicit issue→rule→analysis→conclusion chains, maintain citation provenance,
+track unresolved factual gaps, and produce adversarial counter-arguments.
+Always separate authority strength from factual confidence."
+    :concepts
+    ["issue" "rule" "analysis" "conclusion" "holding" "authority-weight"
+     "citation-chain" "fact-pattern" "counterargument" "distinguishing-factor"
+     "burden-shift" "standard-of-proof" "precedent-cluster" "jurisdiction-scope"]
+    :relations
+    [{:type :causes :a "citation-chain" :b "auditability"}
+     {:type :causes :a "precedent-cluster" :b "predictability"}
+     {:type :causes :a "distinguishing-factor" :b "counterargument"}
+     {:type :inherits :a "holding" :b "authority"}
+     {:type :causes :a "burden-shift" :b "outcome-variance"}]
+    :strategies
+    ["IRAC trace construction"
+     "citation-chain grounding"
+     "counterfactual challenge sets"
+     "authority-vs-fact confidence split"]}
+
+   :forecast
+   {:name "Forecasting / Metaculus Middleware"
+    :prompt
+    "Active domain: forecasting middleware.
+Represent predictions as explicit claims with time bounds, base rates, and update logs.
+Track calibration signals and resolution criteria."
+    :concepts
+    ["prediction-question" "base-rate" "time-horizon" "resolution-criteria"
+     "calibration" "brier-score" "probability-update" "evidence-event"
+     "ensemble-forecast" "market-implied-probability"]
+    :relations
+    [{:type :causes :a "evidence-event" :b "probability-update"}
+     {:type :causes :a "calibration" :b "forecast-reliability"}
+     {:type :causes :a "base-rate" :b "prior-belief"}
+     {:type :resembles :a "market-implied-probability" :b "ensemble-forecast"}]
+    :strategies
+    ["prior→likelihood→posterior updates"
+     "resolution-first question design"
+     "calibration tracking"
+     "scenario decomposition"]}
 
    :bio
    {:name "Plasmid & Peptide Knowledge"

@@ -235,6 +235,10 @@ body::after{
 .froth .lane{
   stroke:rgba(115,185,255,.22);stroke-width:1;stroke-dasharray:4 7;
 }
+.froth .flow{
+  fill:none;stroke:rgba(134,224,255,.28);stroke-width:1.6;stroke-linecap:round;
+  filter:drop-shadow(0 0 4px rgba(110,206,255,.24));
+}
 .froth .time-dot{
   fill:#8ef3bf;opacity:.9;filter:drop-shadow(0 0 5px rgba(142,243,191,.45));
 }
@@ -255,6 +259,12 @@ body::after{
   background:#0f1620;border:1px solid #2b3a4d;border-bottom-color:#1a2736;
   border-radius:3px;padding:0 4px;font:9px/1.5 inherit;color:#cfe3fb;margin-left:4px;
 }
+.timeline-wrap{
+  margin-left:auto;display:flex;align-items:center;gap:7px;
+  color:#9cb3cd;font-size:9px;letter-spacing:.6px;text-transform:uppercase;
+}
+.timeline-wrap input[type='range']{width:170px;accent-color:#7fd6ae}
+.timeline-wrap .tv{min-width:84px;text-align:right;color:#d7e7f8;text-transform:none}
 .action-dock{
   min-height:34px;padding:5px 10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
   border-bottom:1px solid #0e1723;background:linear-gradient(180deg,#172333,#121c2a);
@@ -267,8 +277,80 @@ body::after{
 }
 .act-btn:hover{filter:brightness(1.08)}
 .act-btn:active{transform:translateY(1px)}
+.act-btn.active{
+  color:#102018;background:linear-gradient(180deg,#95f5be,#57d493);border-color:#4bb37e;font-weight:700;
+}
 .act-btn.warn{border-color:#8c6b3b;color:#ffe6c1;background:linear-gradient(180deg,#5a4123,#3d2d1a)}
 .act-btn.good{border-color:#3e7d58;color:#d4ffe2;background:linear-gradient(180deg,#244c35,#183527)}
+.frontpanel{
+  margin:8px 10px 0;padding:10px;border:1px solid #2c3c4d;border-radius:10px;
+  background:
+    radial-gradient(140% 120% at 0% 0%, rgba(123,188,255,.12), transparent 62%),
+    linear-gradient(180deg,#202d3c,#172230);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.1), inset 0 -1px 0 rgba(0,0,0,.35), 0 6px 12px rgba(0,0,0,.2);
+  position:relative;overflow:hidden;
+}
+.frontpanel::before{
+  content:'';position:absolute;inset:0;pointer-events:none;opacity:.3;
+  background:repeating-linear-gradient(90deg,rgba(255,255,255,.04) 0,rgba(255,255,255,.04) 1px,transparent 1px,transparent 18px);
+}
+.fp-head{
+  display:flex;align-items:center;justify-content:space-between;position:relative;z-index:1;
+  margin-bottom:8px;
+}
+.fp-title{
+  font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#f0cd8a;font-weight:700;
+}
+.fp-leds{display:flex;align-items:center;gap:8px}
+.fp-led{
+  display:inline-flex;align-items:center;gap:4px;font-size:9px;color:#aab9cb;letter-spacing:.4px;
+}
+.fp-led i{
+  width:7px;height:7px;border-radius:50%;display:inline-block;border:1px solid rgba(0,0,0,.45);
+  background:#5a6572;box-shadow:inset 0 1px 1px rgba(255,255,255,.2);
+}
+.fp-led i.ok{background:#66d98e;box-shadow:0 0 6px rgba(102,217,142,.45)}
+.fp-led i.warn{background:#e1b464;box-shadow:0 0 6px rgba(225,180,100,.35)}
+.fp-led i.bad{background:#d47171;box-shadow:0 0 6px rgba(212,113,113,.35)}
+.fp-cables{
+  width:100%;height:28px;display:block;position:relative;z-index:1;margin-bottom:6px;
+}
+.fp-cables path{
+  fill:none;stroke:rgba(124,196,255,.42);stroke-width:2.1;stroke-linecap:round;
+  filter:drop-shadow(0 0 5px rgba(124,196,255,.2));
+}
+.fp-grid{
+  display:grid;grid-template-columns:repeat(6,minmax(102px,1fr));gap:7px;position:relative;z-index:1;
+}
+.fp-mod{
+  border:1px solid #31445a;border-radius:8px;padding:7px 8px;min-height:90px;
+  background:linear-gradient(180deg,#27374b,#1b2838);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 1px 0 rgba(0,0,0,.3);
+}
+.fp-mod .mh{
+  font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#b4c7df;margin-bottom:6px;
+}
+.fp-mod .mv{
+  font-size:10px;color:#dcecff;margin-bottom:6px;min-height:14px;
+}
+.fp-knob{
+  width:100%;accent-color:#8deec2;
+}
+.fp-toggle{
+  display:flex;align-items:center;gap:6px;font-size:10px;color:#c6d8ec;
+}
+.fp-toggle input{accent-color:#6fd7a0}
+.fp-btn{
+  border:1px solid #3a4f66;border-radius:6px;padding:4px 7px;font-size:9px;letter-spacing:.4px;
+  color:#cfe2f6;background:linear-gradient(180deg,#2a3e55,#1d2e42);cursor:pointer;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
+}
+.fp-btn:active{transform:translateY(1px)}
+.fp-btn.active{
+  color:#112118;background:linear-gradient(180deg,#9ef7c4,#5fd796);border-color:#54bd86;font-weight:700;
+}
+@media(max-width:1220px){.fp-grid{grid-template-columns:repeat(3,minmax(120px,1fr));}}
+@media(max-width:700px){.fp-grid{grid-template-columns:repeat(2,minmax(120px,1fr));}}
 .help-modal{
   position:fixed;inset:0;background:rgba(7,10,15,.68);z-index:12;
   display:none;align-items:center;justify-content:center;padding:14px;
@@ -285,12 +367,50 @@ body::after{
 .help-row{font-size:11px;color:#b9c9dc;padding:6px 8px;border:1px solid #2a3849;border-radius:6px;background:rgba(11,18,27,.45)}
 .help-row b{color:#dff2ff}
 @media(max-width:700px){.help-grid{grid-template-columns:1fr}}
+.cmd-modal{
+  position:fixed;inset:0;background:rgba(6,10,14,.64);z-index:13;display:none;
+  align-items:flex-start;justify-content:center;padding-top:7vh;
+}
+.cmd-modal.show{display:flex}
+.cmd-card{
+  width:min(760px,95vw);border-radius:12px;border:1px solid #3a4d63;
+  background:linear-gradient(180deg,#1d2938,#141e2a);
+  box-shadow:0 20px 44px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.08);
+  overflow:hidden;
+}
+.cmd-head{padding:9px 10px;border-bottom:1px solid #243548;background:linear-gradient(180deg,#223143,#192736)}
+.cmd-head input{
+  width:100%;background:#0e1722;border:1px solid #2f4660;border-radius:8px;
+  color:#e8f2ff;padding:9px 10px;font:12px/1.35 inherit;outline:none;
+}
+.cmd-list{max-height:46vh;overflow:auto}
+.cmd-item{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:8px 10px;border-bottom:1px solid rgba(48,67,87,.45);cursor:pointer;
+}
+.cmd-item:hover,.cmd-item.active{background:linear-gradient(180deg,rgba(122,191,255,.16),rgba(122,191,255,.08))}
+.cmd-item .k{font-size:11px;color:#e2efff}
+.cmd-item .d{font-size:10px;color:#9db4ce}
 
 .msg{margin-bottom:20px;animation:rise .25s ease}
 @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .msg-label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px}
 .msg-label.human{color:var(--cyan)}
 .msg-label.coggy{color:var(--amber)}
+.msg-meta{
+  margin-top:5px;font-size:10px;color:#9cb0c8;display:flex;gap:8px;flex-wrap:wrap;
+}
+.msg-meta .chip{
+  border:1px solid #2f4258;border-radius:999px;padding:1px 7px;background:linear-gradient(180deg,#152231,#101a25);
+}
+.msg-actions{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap}
+.msg-action{
+  border:1px solid #41607e;border-radius:999px;padding:2px 8px;font-size:9px;letter-spacing:.4px;
+  color:#d9eafe;background:linear-gradient(180deg,#1d3148,#162538);cursor:pointer;
+}
+.msg-action:hover{filter:brightness(1.08)}
+.msg-action:active{transform:translateY(1px)}
+.msg-action.warn{border-color:#8f6a3b;color:#ffe8c4;background:linear-gradient(180deg,#5a3f21,#402d18)}
 .msg-body{
   padding:11px 14px;border-radius:8px;white-space:pre-wrap;word-wrap:break-word;
   line-height:1.6;
@@ -462,6 +582,17 @@ body::after{
 .or-body{font-size:10px;line-height:1.45;color:#c5d1df}
 .or-body .hint{color:#9eb0c6}
 .or-body .mono{font-family:'JetBrains Mono','Fira Code',monospace;color:#e8f0fb}
+.or-models{font-size:10px;line-height:1.35;color:#c5d1df}
+.or-model-row{
+  display:grid;grid-template-columns:1.8fr .55fr .6fr .6fr;gap:6px;
+  padding:3px 0;border-bottom:1px solid rgba(61,81,104,.35);
+}
+.or-model-row.h{color:#9db2cc;text-transform:uppercase;letter-spacing:.7px;font-size:9px}
+.or-model-row:last-child{border-bottom:none}
+.or-model-row .m{color:#e8f3ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.or-model-row .v{color:#b5c8df;text-align:right}
+.or-model-row .v.warn{color:#f2c26e}
+.or-model-row .v.bad{color:#e58b8b}
 
 /* Focus set */
 .focus-set{padding:8px 14px;border-bottom:1px solid #1f2a38}
@@ -555,10 +686,12 @@ body::after{
     <span class='pill' id='r-atoms'>atoms: <b>0</b></span>
     <span class='pill' id='r-ground'>ground: <b>—</b></span>
     <span class='pill' id='r-vacuum'>vacuum: <b>0</b></span>
+    <span class='pill' id='r-sti'>sti: <b>—</b></span>
     <span class='pill' id='r-hyle'>hyle: <b>—</b></span>
     <span class='pill' id='r-delta'>delta: <b>—</b></span>
     <span class='spacer'></span>
     <span class='pill' id='r-parse'>parse: <b>—</b></span>
+    <span class='pill' id='r-lat'>lat: <b>—</b></span>
     <span class='pill' id='r-turn'>turn: <b>0</b></span>
   </div>
 
@@ -581,12 +714,70 @@ body::after{
         <span class='ops-chip'>ghosts <kbd>g</kbd></span>
         <span class='ops-chip'>semantic <kbd>s</kbd></span>
         <span class='ops-chip'>help <kbd>?</kbd></span>
+        <span class='timeline-wrap'>
+          <span>timeline</span>
+          <input id='timeline' type='range' min='0' max='0' value='0'>
+          <span class='tv' id='timeline-val'>live</span>
+        </span>
       </div>
       <div class='action-dock'>
         <span class='act-btn warn' id='act-focus-fail'>focus failures</span>
         <span class='act-btn' id='act-collapse-noninfer'>infer only</span>
         <span class='act-btn' id='act-expand-all'>expand all</span>
         <span class='act-btn good' id='act-reset-layout'>reset layout</span>
+        <span class='act-btn' id='act-dump'>dump state</span>
+        <span class='act-btn' id='act-load'>reload state</span>
+      </div>
+      <div class='frontpanel' id='frontpanel'>
+        <div class='fp-head'>
+          <div class='fp-title'>frontpanel patchbay :: modal synth routing</div>
+          <div class='fp-leds'>
+            <span class='fp-led'><i id='fp-led-parse' class='warn'></i>parse</span>
+            <span class='fp-led'><i id='fp-led-ground' class='warn'></i>ground</span>
+            <span class='fp-led'><i id='fp-led-vacuum' class='ok'></i>vacuum</span>
+          </div>
+        </div>
+        <svg class='fp-cables' viewBox='0 0 1000 40' preserveAspectRatio='none'>
+          <path d='M10 28 C90 4, 160 4, 240 28'/>
+          <path d='M170 30 C270 7, 340 7, 430 30'/>
+          <path d='M360 30 C460 5, 540 5, 635 30'/>
+          <path d='M560 28 C650 4, 740 4, 820 28'/>
+          <path d='M750 30 C830 8, 900 8, 980 30'/>
+        </svg>
+        <div class='fp-grid'>
+          <div class='fp-mod'>
+            <div class='mh'>Layer Depth</div>
+            <div class='mv' id='fp-depth-val'>L1..L3</div>
+            <input id='fp-depth' class='fp-knob' type='range' min='1' max='3' step='1' value='3'>
+          </div>
+          <div class='fp-mod'>
+            <div class='mh'>Ghost Decay</div>
+            <div class='mv' id='fp-decay-val'>180s</div>
+            <input id='fp-decay' class='fp-knob' type='range' min='80' max='420' step='10' value='180'>
+          </div>
+          <div class='fp-mod'>
+            <div class='mh'>Semantic Tint</div>
+            <div class='mv' id='fp-semantic-val'>enabled</div>
+            <label class='fp-toggle'><input id='fp-semantic' type='checkbox' checked>color code traces</label>
+          </div>
+          <div class='fp-mod'>
+            <div class='mh'>Ghost Visibility</div>
+            <div class='mv' id='fp-ghost-val'>shown</div>
+            <label class='fp-toggle'><input id='fp-ghost' type='checkbox' checked>keep older traces</label>
+          </div>
+          <div class='fp-mod'>
+            <div class='mh'>Froth Tension</div>
+            <div class='mv' id='fp-tension-val'>0.015</div>
+            <input id='fp-tension' class='fp-knob' type='range' min='8' max='35' step='1' value='15'>
+          </div>
+          <div class='fp-mod'>
+            <div class='mh'>Actions</div>
+            <div class='mv'>trace routing</div>
+            <button class='fp-btn' id='fp-focus-fail'>focus failures</button>
+            <button class='fp-btn' id='fp-infer-only'>infer only</button>
+            <button class='fp-btn' id='fp-reset'>reset panel</button>
+          </div>
+        </div>
       </div>
       <div class='thought-canvas' id='thought-canvas'>
         <span class='label'>common attention froth</span>
@@ -612,6 +803,13 @@ body::after{
           <span id='or-when'>checking…</span>
         </div>
         <div class='or-body' id='or-body'>status pending</div>
+      </div>
+      <div class='or-panel'>
+        <div class='or-head'>
+          <span>Free Model Ledger</span>
+          <span id='orm-when'>—</span>
+        </div>
+        <div class='or-models' id='or-models'>no samples yet</div>
       </div>
       <div class='focus-set' id='focus-set'>
         <div class='fh'>ATTENTIONAL FOCUS</div>
@@ -641,18 +839,38 @@ body::after{
     </div>
   </div>
 </div>
+<div class='cmd-modal' id='cmd-modal'>
+  <div class='cmd-card'>
+    <div class='cmd-head'>
+      <input id='cmd-input' placeholder='Type a command… (e.g. retry, dump, legal, live)'>
+    </div>
+    <div class='cmd-list' id='cmd-list'></div>
+  </div>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
 const conv = $('conv'), inp = $('inp'), go = $('go');
+const hemi = document.querySelector('.hemi');
+const splitter = $('splitter');
 let turn = 0, lastGround = null, traceSeq = 0;
 let traceDepth = 3, showGhost = true, showSemantic = true;
 let prevMetrics = null, prevAtoms = null;
 let prevTraceStats = null;
 let layerCollapse = {parse:false, ground:false, attend:false, infer:false, reflect:false};
 let orCache = {at: 0, data: null};
+let ormCache = {at: 0, data: null};
 let frothState = {nodes: [], map: {}, dragging: null, raf: null};
 let leftColPx = null;
+let ghostAfterSec = 180;
+let frothTension = 0.015;
+let frothDamping = 0.9;
+let traceFilterMode = 'all';
+let lastSendMs = 0;
+let msgSeq = 0;
+let replayLive = true;
+let replayIdx = -1;
+let commandItems = [];
 
 // ── Render helpers ──
 
@@ -733,11 +951,16 @@ function renderThoughtCanvas(stateR) {
   const base = Math.max(1, active.length - 1);
   const nextNodes = [];
   const nextMap = {};
+  const cx = W * 0.5, cy = H * 0.52;
+  const spiralStep = Math.min(52, Math.max(28, 230 / Math.max(1, active.length)));
   active.forEach((a, i) => {
     const seed = turn * 37 + i * 11 + Math.round(a.sti * 10);
     const lane = i % lanes;
-    const x = 70 + ((W - 140) * (i / base)) + (rnd(seed, 5) - 0.5) * 70;
-    const y = 30 + (H - 60) * ((lane + rnd(seed, 7) * 0.85) / lanes);
+    const ang = i * 2.399963229728653 + rnd(seed, 3) * 0.35;
+    const rad = 36 + Math.sqrt(i + 1) * spiralStep;
+    const laneBias = ((lane + 0.5) / lanes - 0.5) * 42;
+    const x = cx + Math.cos(ang) * rad + (rnd(seed, 5) - 0.5) * 16;
+    const y = cy + Math.sin(ang) * rad * 0.62 + laneBias + (rnd(seed, 7) - 0.5) * 12;
     const r = Math.max(22, Math.min(88, 20 + a.sti * 3.2));
     const hu = Math.round((hashColor(a.k).match(/hsl\\((\\d+)/) || [0, 180])[1]);
     const fillCell = `hsla(${hu}, 78%, 58%, 0.16)`;
@@ -764,6 +987,20 @@ function drawFroth() {
     const y = (H / lanes) * i;
     h += `<line class='lane' x1='0' y1='${y.toFixed(1)}' x2='${W}' y2='${y.toFixed(1)}'/>`;
   }
+  // connective strands to nearest stronger neighbors
+  frothState.nodes.forEach((n, idx) => {
+    const candidates = frothState.nodes
+      .map((o, j) => ({o, j, d: Math.hypot(o.x - n.x, o.y - n.y)}))
+      .filter(x => x.j !== idx && x.o.sti >= n.sti * 0.7)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 2);
+    candidates.forEach(c => {
+      if (c.d > 240) return;
+      const mx = (n.x + c.o.x) * 0.5;
+      const my = (n.y + c.o.y) * 0.5 - Math.min(18, c.d * 0.05);
+      h += `<path class='flow' d='M ${n.x.toFixed(1)} ${n.y.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${c.o.x.toFixed(1)} ${c.o.y.toFixed(1)}'/>`;
+    });
+  });
   frothState.nodes.forEach((n, idx) => {
     const pathOuter = blobPath(n.x, n.y, n.r * 1.55, n.seed + 99);
     const pathCore = blobPath(n.x, n.y, n.r, n.seed + 177);
@@ -774,8 +1011,9 @@ function drawFroth() {
     h += `<path class='cell' d='${pathOuter}' fill='${n.fillCell}'/>`;
     h += `<path class='core' d='${pathCore}' fill='${n.fillCore}'/>`;
     h += `<circle class='time-dot' cx='${tx}' cy='${ty}' r='2.4'/>`;
-    h += `<text class='label' x='${(n.x - n.r * 0.62).toFixed(1)}' y='${(n.y + 2).toFixed(1)}'>${escTrace(n.key).slice(0, 16)}</text>`;
-    h += `<text class='sti' x='${(n.x - n.r * 0.62).toFixed(1)}' y='${(n.y + 16).toFixed(1)}'>STI ${n.sti.toFixed(1)}</text>`;
+    const lx = (n.x - n.r * 0.58).toFixed(1);
+    h += `<text class='label' x='${lx}' y='${(n.y + 2).toFixed(1)}'>${escTrace(n.key).slice(0, 16)}</text>`;
+    h += `<text class='sti' x='${lx}' y='${(n.y + 16).toFixed(1)}'>STI ${n.sti.toFixed(1)}</text>`;
     h += `</g>`;
   });
   el.innerHTML = h;
@@ -792,10 +1030,10 @@ function animateFroth() {
   let moving = false;
   frothState.nodes.forEach(n => {
     if (d && d.node === n) return;
-    const ax = (n.baseX - n.x) * 0.015;
-    const ay = (n.baseY - n.y) * 0.015;
-    n.vx = (n.vx + ax) * 0.9;
-    n.vy = (n.vy + ay) * 0.9;
+    const ax = (n.baseX - n.x) * frothTension;
+    const ay = (n.baseY - n.y) * frothTension;
+    n.vx = (n.vx + ax) * frothDamping;
+    n.vy = (n.vy + ay) * frothDamping;
     n.x += n.vx;
     n.y += n.vy;
     if (Math.abs(n.vx) > 0.02 || Math.abs(n.vy) > 0.02 || Math.abs(n.baseX - n.x) > 0.6 || Math.abs(n.baseY - n.y) > 0.6) moving = true;
@@ -811,12 +1049,20 @@ function animateFroth() {
         const nx = dx / dist, ny = dy / dist;
         a.x -= nx * overlap; a.y -= ny * overlap;
         b.x += nx * overlap; b.y += ny * overlap;
-        a.vx -= nx * 0.04; a.vy -= ny * 0.04;
-        b.vx += nx * 0.04; b.vy += ny * 0.04;
+        const repulse = 0.035 + frothTension * 0.7;
+        a.vx -= nx * repulse; a.vy -= ny * repulse;
+        b.vx += nx * repulse; b.vy += ny * repulse;
         moving = true;
       }
     }
   }
+  // gentle cohesion toward center to prevent edge smear
+  const cx = 500, cy = 132;
+  frothState.nodes.forEach(n => {
+    const gx = (cx - n.x) * 0.0009;
+    const gy = (cy - n.y) * 0.0009;
+    n.vx += gx; n.vy += gy;
+  });
   frothState.nodes.forEach(n => {
     n.x = Math.max(30, Math.min(970, n.x));
     n.y = Math.max(24, Math.min(236, n.y));
@@ -841,23 +1087,53 @@ function applySplit() {
   const left = Math.max(420, Math.min(w - 330, leftColPx || Math.round(w * 0.65)));
   hemi.style.gridTemplateColumns = `${left}px 10px minmax(300px,1fr)`;
 }
+function initSplitterDrag() {
+  if (!splitter || !hemi) return;
+  let drag = null;
+  splitter.addEventListener('pointerdown', e => {
+    if (window.innerWidth <= 1100) return;
+    const rect = hemi.getBoundingClientRect();
+    drag = {startX: e.clientX, startLeft: leftColPx || Math.round(rect.width * 0.65)};
+    splitter.classList.add('dragging');
+    try { splitter.setPointerCapture(e.pointerId); } catch (_) {}
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const rect = hemi.getBoundingClientRect();
+    const dx = e.clientX - drag.startX;
+    leftColPx = Math.max(420, Math.min(rect.width - 330, drag.startLeft + dx));
+    applySplit();
+  });
+  const stop = () => {
+    if (!drag) return;
+    drag = null;
+    splitter.classList.remove('dragging');
+    saveUiPrefs();
+  };
+  window.addEventListener('pointerup', stop);
+  window.addEventListener('pointercancel', stop);
+  window.addEventListener('resize', applySplit);
+}
 function resetLayout() {
   leftColPx = null;
   traceDepth = 3; showGhost = true; showSemantic = true;
+  traceFilterMode = 'all';
+  ghostAfterSec = 180;
+  frothTension = 0.015;
+  frothDamping = 0.9;
   setCtl('ctl-depth-1', true); setCtl('ctl-depth-2', true); setCtl('ctl-depth-3', true);
   setCtl('ctl-ghost', true); setCtl('ctl-semantic', true);
   layerCollapse = {parse:false, ground:false, attend:false, infer:false, reflect:false};
+  syncFrontpanel();
+  syncActionDock();
   saveLayerCollapse(); saveUiPrefs();
   applySplit(); applyTraceFilters(); updateTraceAges();
 }
 function focusFailures() {
-  showGhost = false;
-  setCtl('ctl-ghost', false);
+  traceFilterMode = (traceFilterMode === 'failures') ? 'all' : 'failures';
+  syncActionDock();
   applyTraceFilters();
-  conv.querySelectorAll('.trace').forEach(t => {
-    const hasFail = t.querySelector('.badge.fail-parse, .badge.fail-vacuum');
-    t.style.display = hasFail ? '' : 'none';
-  });
   saveUiPrefs();
 }
 function inferOnly() {
@@ -903,6 +1179,41 @@ function renderOpenRouterStatus(data) {
     <div class='hint'>${escTrace(hint)}</div>`;
   when.textContent = new Date().toLocaleTimeString();
 }
+function setLed(id, level) {
+  const el = $(id);
+  if (!el) return;
+  el.className = level;
+}
+function updateFrontpanelLeds(metricsR) {
+  if (!metricsR) return;
+  const pr = metricsR['parse-rate'] || 0;
+  const gr = metricsR['avg-grounding-rate'] || 0;
+  const vac = metricsR['vacuum-triggers'] || 0;
+  setLed('fp-led-parse', pr >= 0.7 ? 'ok' : (pr >= 0.35 ? 'warn' : 'bad'));
+  setLed('fp-led-ground', gr >= 0.5 ? 'ok' : (gr >= 0.2 ? 'warn' : 'bad'));
+  setLed('fp-led-vacuum', vac > 0 ? 'bad' : 'ok');
+}
+function syncFrontpanel() {
+  if ($('fp-depth')) $('fp-depth').value = String(traceDepth);
+  if ($('fp-depth-val')) $('fp-depth-val').textContent = `L1..L${traceDepth}`;
+  if ($('fp-ghost')) $('fp-ghost').checked = !!showGhost;
+  if ($('fp-ghost-val')) $('fp-ghost-val').textContent = showGhost ? 'shown' : 'fresh only';
+  if ($('fp-semantic')) $('fp-semantic').checked = !!showSemantic;
+  if ($('fp-semantic-val')) $('fp-semantic-val').textContent = showSemantic ? 'enabled' : 'muted';
+  if ($('fp-decay')) $('fp-decay').value = String(Math.round(ghostAfterSec));
+  if ($('fp-decay-val')) $('fp-decay-val').textContent = `${Math.round(ghostAfterSec)}s`;
+  if ($('fp-tension')) $('fp-tension').value = String(Math.round(frothTension * 1000));
+  if ($('fp-tension-val')) $('fp-tension-val').textContent = frothTension.toFixed(3);
+}
+function setAct(id, on) {
+  const el = $(id);
+  if (!el) return;
+  el.classList.toggle('active', !!on);
+}
+function syncActionDock() {
+  setAct('act-focus-fail', traceFilterMode === 'failures');
+  setAct('fp-focus-fail', traceFilterMode === 'failures');
+}
 async function refreshOpenRouterStatus(force=false) {
   const now = Date.now();
   if (!force && orCache.data && (now - orCache.at) < 60000) {
@@ -915,6 +1226,113 @@ async function refreshOpenRouterStatus(force=false) {
     renderOpenRouterStatus(data);
   } catch (_) {
     renderOpenRouterStatus({auth: {ok:false, status:'unreachable', hint:'cannot reach /api/openrouter/status'}});
+  }
+}
+function renderModelLedger(data) {
+  const el = $('or-models');
+  const when = $('orm-when');
+  if (!el) return;
+  const rows = (data && data.models) ? data.models.slice(0, 5) : [];
+  if (!rows.length) {
+    el.textContent = 'no samples yet';
+    if (when) when.textContent = '—';
+    return;
+  }
+  let h = `<div class=\"or-model-row h\"><span>model</span><span class=\"v\">lat(ms)</span><span class=\"v\">quota429</span><span class=\"v\">budget402</span></div>`;
+  rows.forEach(r => {
+    const lat = Math.round(r['avg-latency-ms'] || 0);
+    const quota = Number(r['quota-hits'] || 0);
+    const budget = Number(r['budget-hits'] || 0);
+    const qCls = quota > 0 ? (quota > 2 ? 'bad' : 'warn') : '';
+    const bCls = budget > 0 ? (budget > 1 ? 'bad' : 'warn') : '';
+    const cool = Number(r['cooldown-ms'] || 0) > 0 ? ` · cd ${Math.ceil((r['cooldown-ms'] || 0)/1000)}s` : '';
+    h += `<div class=\"or-model-row\">
+      <span class=\"m\" title=\"${escTrace(r.model || '')}\">${escTrace(r.model || '?')}${cool}</span>
+      <span class=\"v\">${lat}</span>
+      <span class=\"v ${qCls}\">${quota}</span>
+      <span class=\"v ${bCls}\">${budget}</span>
+    </div>`;
+  });
+  el.innerHTML = h;
+  if (when) when.textContent = new Date().toLocaleTimeString();
+}
+async function refreshModelLedger(force=false) {
+  const now = Date.now();
+  if (!force && ormCache.data && (now - ormCache.at) < 15000) {
+    renderModelLedger(ormCache.data);
+    return;
+  }
+  try {
+    const data = await fetch('/api/openrouter/models').then(r => r.json());
+    ormCache = {at: now, data};
+    renderModelLedger(data);
+  } catch (_) {
+    renderModelLedger({models: []});
+  }
+}
+
+async function setModel(modelId) {
+  if (!modelId) return {ok:false, error:'missing model'};
+  const resp = await fetch('/api/model', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({model:modelId})
+  });
+  return resp.json();
+}
+
+async function pickNextModel() {
+  const [stateR, ledger] = await Promise.all([
+    fetch('/api/state').then(r => r.json()),
+    fetch('/api/openrouter/models').then(r => r.json())
+  ]);
+  const ranked = (ledger && ledger.ranked) || [];
+  const current = stateR && stateR.model;
+  if (!ranked.length) return null;
+  const idx = ranked.indexOf(current);
+  if (idx < 0) return ranked[0];
+  return ranked[(idx + 1) % ranked.length];
+}
+
+async function retryWithNextModel(msg) {
+  try {
+    const next = await pickNextModel();
+    if (!next) {
+      addMsg('coggy', '⚠ no candidate model available for retry');
+      return;
+    }
+    const setr = await setModel(next);
+    if (!setr.ok) {
+      addMsg('coggy', `⚠ cannot switch model: ${setr.error || 'unknown error'}`);
+      return;
+    }
+    addMsg('coggy', `↺ retrying with ${next}`, null, ['model switched']);
+    await sendText(msg || inp.value || '', {silentHuman:false});
+  } catch (e) {
+    addMsg('coggy', '⚠ retry failed: ' + e.message);
+  }
+}
+
+async function dumpState() {
+  try {
+    const d = await fetch('/api/state/dump').then(r => r.json());
+    addMsg('coggy', d.ok ? `snapshot dumped → ${d.path}` : `snapshot dump failed: ${d.error || '?'}`, null, d.bytes ? [`${d.bytes} bytes`] : null);
+  } catch (e) {
+    addMsg('coggy', '⚠ dump failed: ' + e.message);
+  }
+}
+
+async function loadState() {
+  try {
+    const d = await fetch('/api/state/load').then(r => r.json());
+    if (d.ok) {
+      addMsg('coggy', `snapshot reloaded (${d.atoms} atoms, ${d.links} links)`, null, [`turn ${d.turn}`]);
+      await refresh();
+    } else {
+      addMsg('coggy', `snapshot load failed: ${d.error || '?'}`);
+    }
+  } catch (e) {
+    addMsg('coggy', '⚠ load failed: ' + e.message);
   }
 }
 
@@ -943,11 +1361,17 @@ function loadUiPrefs() {
     if (typeof p.showGhost === 'boolean') showGhost = p.showGhost;
     if (typeof p.showSemantic === 'boolean') showSemantic = p.showSemantic;
     if (typeof p.leftColPx === 'number') leftColPx = p.leftColPx;
+    if (typeof p.traceFilterMode === 'string') traceFilterMode = p.traceFilterMode;
+    if (typeof p.ghostAfterSec === 'number') ghostAfterSec = Math.max(80, Math.min(420, p.ghostAfterSec));
+    if (typeof p.frothTension === 'number') {
+      frothTension = Math.max(0.008, Math.min(0.035, p.frothTension));
+      frothDamping = Math.max(0.82, Math.min(0.94, 0.97 - frothTension * 3.3));
+    }
   } catch (_) {}
 }
 function saveUiPrefs() {
   try {
-    localStorage.setItem('coggy.ui.prefs', JSON.stringify({traceDepth, showGhost, showSemantic, leftColPx}));
+    localStorage.setItem('coggy.ui.prefs', JSON.stringify({traceDepth, showGhost, showSemantic, leftColPx, ghostAfterSec, frothTension, traceFilterMode}));
   } catch (_) {}
 }
 function isLayerCollapsed(key) {
@@ -1077,8 +1501,11 @@ function applyTraceFilters() {
   traces.forEach(t => {
     const age = t.getAttribute('data-age');
     const hideGhost = !showGhost && age === 'ghost';
-    t.setAttribute('data-hidden-by-age', hideGhost ? '1' : '0');
-    if (!hideGhost) visible += 1;
+    const hasFail = !!t.querySelector('.badge.fail-parse, .badge.fail-vacuum');
+    const hideByMode = (traceFilterMode === 'failures' && !hasFail);
+    t.setAttribute('data-hidden-by-age', (hideGhost || hideByMode) ? '1' : '0');
+    t.style.display = (hideGhost || hideByMode) ? 'none' : '';
+    if (!hideGhost && !hideByMode) visible += 1;
 
     const layers = t.querySelectorAll('.trace-layer');
     layers.forEach(layer => {
@@ -1091,32 +1518,75 @@ function applyTraceFilters() {
     });
   });
   $('op-traces').textContent = `visible traces: ${visible}`;
-  $('op-legend').textContent = `layers: L1..L${traceDepth} ${showGhost ? 'with ghosts' : 'fresh only'}`;
+  $('op-legend').textContent = `layers: L1..L${traceDepth} ${showGhost ? 'with ghosts' : 'fresh only'}${traceFilterMode === 'failures' ? ' · failures only' : ''}`;
 }
 
 function updateTraceAges() {
   const traces = conv.querySelectorAll('.trace[data-born]');
   const now = Date.now();
+  const warmS = Math.max(12, ghostAfterSec * 0.2);
+  const coolS = Math.max(28, ghostAfterSec * 0.5);
   traces.forEach(t => {
     const born = parseInt(t.getAttribute('data-born') || '0', 10);
     const ageS = (now - born) / 1000;
     let age = 'new';
-    if (ageS > 180) age = 'ghost';
-    else if (ageS > 90) age = 'cool';
-    else if (ageS > 35) age = 'warm';
+    if (ageS > ghostAfterSec) age = 'ghost';
+    else if (ageS > coolS) age = 'cool';
+    else if (ageS > warmS) age = 'warm';
     t.setAttribute('data-age', age);
   });
   applyTraceFilters();
 }
 
-function addMsg(role, content, trace) {
+function updateTimelineControls() {
+  const t = $('timeline');
+  const tv = $('timeline-val');
+  if (!t || !tv) return;
+  const total = conv.querySelectorAll('.msg').length;
+  t.max = String(Math.max(0, total - 1));
+  if (replayLive || replayIdx < 0) {
+    replayIdx = Math.max(0, total - 1);
+    t.value = String(Math.max(0, total - 1));
+    tv.textContent = total ? `live · ${total}/${total}` : 'live';
+  } else {
+    t.value = String(Math.max(0, Math.min(replayIdx, total - 1)));
+    tv.textContent = `${replayIdx + 1}/${total}`;
+  }
+}
+
+function applyReplay() {
+  const msgs = Array.from(conv.querySelectorAll('.msg'));
+  if (replayLive) {
+    msgs.forEach(m => m.style.display = '');
+  } else {
+    msgs.forEach(m => {
+      const idx = parseInt(m.getAttribute('data-msg-idx') || '-1', 10);
+      m.style.display = idx <= replayIdx ? '' : 'none';
+    });
+  }
+  updateTimelineControls();
+}
+
+function addMsg(role, content, trace, meta, actions) {
   const d = document.createElement('div');
   d.className = 'msg ' + role;
+  d.setAttribute('data-msg-idx', String(msgSeq++));
+  const metaHtml = (meta && Array.isArray(meta) && meta.length)
+    ? `<div class=\"msg-meta\">${meta.map(m => `<span class=\"chip\">${escHtml(m)}</span>`).join('')}</div>`
+    : '';
+  const actionsHtml = (actions && Array.isArray(actions) && actions.length)
+    ? `<div class=\"msg-actions\">${actions.map(a =>
+        `<span class=\"msg-action ${a.cls || ''}\" data-act=\"${escHtml(a.act || '')}\" data-msg=\"${escHtml(a.msg || '')}\">${escHtml(a.label || a.act || '')}</span>`
+      ).join('')}</div>`
+    : '';
   d.innerHTML = `<div class=\"msg-label ${role}\">${role === 'human' ? 'HUMAN' : 'COGGY'}</div>
     <div class=\"msg-body\">${escHtml(content)}</div>
+    ${metaHtml}
+    ${actionsHtml}
     ${trace ? renderTrace(trace) : ''}`;
   conv.appendChild(d);
   updateTraceAges();
+  applyReplay();
   conv.scrollTop = conv.scrollHeight;
 }
 
@@ -1139,6 +1609,10 @@ function renderMetrics(m) {
        groundClass(m['avg-relation-rate'] || 0)) +
     kv('vacuum triggers', m['vacuum-triggers'] || 0,
        (m['vacuum-triggers'] || 0) > 0 ? 'bad' : '') +
+    kv('ecan exhausted', m['budget-exhaustions'] || 0,
+       (m['budget-exhaustions'] || 0) > 0 ? 'warn' : '') +
+    kv('sti funds', m['sti-funds'] !== undefined ? Number(m['sti-funds']).toFixed(1) : '—',
+       (m['sti-funds'] || 0) < -120 ? 'bad' : (m['sti-funds'] || 0) < 0 ? 'mid' : 'good') +
     kv('turns', m.turns || 0, '') +
     (m['last-failure'] ? kv('last fail', m['last-failure'].type || '—', 'bad') : '');
 }
@@ -1201,9 +1675,11 @@ async function refresh() {
     renderFocus(stateR.focus, stateR.attention);
     renderAtoms(atoms);
     renderMetrics(metricsR);
+    updateFrontpanelLeds(metricsR);
     renderGeometry(stateR, metricsR);
     renderThoughtCanvas(stateR);
     refreshOpenRouterStatus(false);
+    refreshModelLedger(false);
     if (stateR.hyle) {
       const up = stateR.hyle.status === 'up';
       $('r-hyle').innerHTML = `hyle: <b>${up ? 'up' : 'down'}</b>`;
@@ -1217,9 +1693,14 @@ async function refresh() {
       $('r-ground').className = 'pill ' + gc;
       $('r-vacuum').innerHTML = `vacuum: <b>${metricsR['vacuum-triggers']||0}</b>`;
       $('r-vacuum').className = 'pill ' + ((metricsR['vacuum-triggers']||0) > 0 ? 'warn' : '');
+      const stiFunds = Number(metricsR['sti-funds'] || 0);
+      $('r-sti').innerHTML = `sti: <b>${stiFunds.toFixed(1)}</b>`;
+      $('r-sti').className = 'pill ' + (stiFunds < -120 ? 'bad' : stiFunds < 0 ? 'warn' : 'ok');
       const pr = metricsR['parse-rate'] || 0;
       $('r-parse').innerHTML = `parse: <b>${(pr*100).toFixed(0)}%</b>`;
       $('r-parse').className = 'pill ' + (pr >= 0.7 ? 'ok' : pr >= 0.3 ? 'warn' : 'bad');
+      $('r-lat').innerHTML = `lat: <b>${lastSendMs ? lastSendMs + 'ms' : '—'}</b>`;
+      $('r-lat').className = 'pill ' + (lastSendMs > 2600 ? 'warn' : lastSendMs > 0 ? 'ok' : '');
 
       const dAtoms = prevAtoms === null ? 0 : (nAtoms - prevAtoms);
       const prevGround = prevMetrics ? (prevMetrics['avg-grounding-rate'] || 0) : gr;
@@ -1237,12 +1718,15 @@ async function refresh() {
 
 // ── Send ──
 
-async function send() {
-  const msg = inp.value.trim();
+async function sendText(rawMsg, opts = {}) {
+  const msg = (rawMsg || '').trim();
   if (!msg) return;
-  inp.value = '';
+  if (!opts.keepInput) inp.value = '';
   go.disabled = true;
-  addMsg('human', msg);
+  const oldLabel = go.textContent;
+  go.textContent = '…';
+  if (!opts.silentHuman) addMsg('human', msg);
+  const t0 = performance.now();
 
   try {
     const resp = await fetch('/api/chat', {
@@ -1251,16 +1735,32 @@ async function send() {
       body: JSON.stringify({message: msg})
     });
     const data = await resp.json();
+    const dt = Math.round(performance.now() - t0);
+    lastSendMs = dt;
     turn = data.turn || turn + 1;
     $('bar-turn').textContent = '[' + turn + ']';
     $('r-turn').innerHTML = 'turn: <b>' + turn + '</b>';
-    addMsg('coggy', data.content || data.error || '?', data.trace);
+    const meta = [];
+    if (data.llm && data.llm.model) meta.push(`model ${data.llm.model}`);
+    if (data.llm && data.llm.status !== undefined && data.llm.status !== null) meta.push(`status ${data.llm.status}`);
+    if (data.llm && Array.isArray(data.llm.attempts) && data.llm.attempts.length > 1) meta.push(`attempts ${data.llm.attempts.length}`);
+    meta.push(`latency ${dt}ms`);
+    let actions = [];
+    if (data.llm && data.llm.ok === false) {
+      actions.push({act:'retry-next-model', label:'retry with next model', cls:'warn', msg});
+    }
+    addMsg('coggy', data.content || data.error || '?', data.trace, meta, actions);
     refresh();
   } catch(e) {
-    addMsg('coggy', '⚠ ' + e.message);
+    addMsg('coggy', '⚠ ' + e.message, null, [`latency ${Math.round(performance.now() - t0)}ms`]);
   }
   go.disabled = false;
+  go.textContent = oldLabel;
   inp.focus();
+}
+
+async function send() {
+  return sendText(inp.value);
 }
 
 inp.addEventListener('keydown', e => { if (e.key === 'Enter') send() });
@@ -1272,15 +1772,129 @@ function setCtl(id, active) {
   el.classList.toggle('active', !!active);
 }
 
-$('ctl-depth-1').addEventListener('click', () => { traceDepth = 1; setCtl('ctl-depth-1', true); setCtl('ctl-depth-2', false); setCtl('ctl-depth-3', false); applyTraceFilters(); saveUiPrefs(); });
-$('ctl-depth-2').addEventListener('click', () => { traceDepth = 2; setCtl('ctl-depth-1', true); setCtl('ctl-depth-2', true); setCtl('ctl-depth-3', false); applyTraceFilters(); saveUiPrefs(); });
-$('ctl-depth-3').addEventListener('click', () => { traceDepth = 3; setCtl('ctl-depth-1', true); setCtl('ctl-depth-2', true); setCtl('ctl-depth-3', true); applyTraceFilters(); saveUiPrefs(); });
-$('ctl-ghost').addEventListener('click', () => { showGhost = !showGhost; setCtl('ctl-ghost', showGhost); applyTraceFilters(); saveUiPrefs(); });
-$('ctl-semantic').addEventListener('click', () => { showSemantic = !showSemantic; setCtl('ctl-semantic', showSemantic); applyTraceFilters(); saveUiPrefs(); });
+function buildCommands() {
+  return [
+    {k:'Toggle Ghosts', d:'show/hide old traces', run:() => $('ctl-ghost').click()},
+    {k:'Toggle Semantic Tint', d:'colorized semantic layers', run:() => $('ctl-semantic').click()},
+    {k:'Focus Failures', d:'show only failing traces', run:() => focusFailures()},
+    {k:'Infer Only', d:'collapse non-infer layers', run:() => inferOnly()},
+    {k:'Expand All', d:'expand all trace layers', run:() => expandAll()},
+    {k:'Reset Layout', d:'reset panel + controls', run:() => resetLayout()},
+    {k:'Replay Live', d:'timeline follows newest turn', run:() => { replayLive = true; applyReplay(); }},
+    {k:'Replay Previous', d:'move timeline backward', run:() => { replayLive = false; replayIdx = Math.max(0, replayIdx - 1); applyReplay(); }},
+    {k:'Replay Next', d:'move timeline forward', run:() => { replayLive = false; replayIdx = replayIdx + 1; applyReplay(); }},
+    {k:'Dump State', d:'persist snapshot to disk', run:() => dumpState()},
+    {k:'Reload State', d:'load snapshot from disk', run:() => loadState()},
+    {k:'Domain: Legal', d:'activate legal reasoning pack', run:async () => {
+      const r = await fetch('/api/domain', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain:'legal'})}).then(x => x.json());
+      addMsg('coggy', r.ok ? `domain → ${r.domain} (${r.name})` : `domain activation failed: ${r.error || '?'}`);
+      refresh();
+    }},
+    {k:'Domain: IBID Legal', d:'activate ibid legal engine pack', run:async () => {
+      const r = await fetch('/api/domain', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain:'ibid-legal'})}).then(x => x.json());
+      addMsg('coggy', r.ok ? `domain → ${r.domain} (${r.name})` : `domain activation failed: ${r.error || '?'}`);
+      refresh();
+    }},
+    {k:'Domain: Forecast', d:'activate metaculus-style forecasting pack', run:async () => {
+      const r = await fetch('/api/domain', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain:'forecast'})}).then(x => x.json());
+      addMsg('coggy', r.ok ? `domain → ${r.domain} (${r.name})` : `domain activation failed: ${r.error || '?'}`);
+      refresh();
+    }},
+    {k:'Retry Next Model', d:'switch model and resend input', run:() => retryWithNextModel(inp.value || 'retry this request')}
+  ];
+}
+
+function renderCommandList(filter='') {
+  const list = $('cmd-list');
+  if (!list) return;
+  const q = (filter || '').trim().toLowerCase();
+  commandItems = buildCommands().filter(c => !q || c.k.toLowerCase().includes(q) || c.d.toLowerCase().includes(q));
+  list.innerHTML = commandItems.map((c, i) =>
+    `<div class=\"cmd-item ${i===0 ? 'active' : ''}\" data-cmd-idx=\"${i}\"><span class=\"k\">${escHtml(c.k)}</span><span class=\"d\">${escHtml(c.d)}</span></div>`
+  ).join('');
+}
+
+function openCommandPalette() {
+  const modal = $('cmd-modal');
+  const input = $('cmd-input');
+  if (!modal || !input) return;
+  renderCommandList('');
+  modal.classList.add('show');
+  input.value = '';
+  setTimeout(() => input.focus(), 0);
+}
+
+function closeCommandPalette() {
+  const modal = $('cmd-modal');
+  if (modal) modal.classList.remove('show');
+}
+
+$('ctl-depth-1').addEventListener('click', () => { traceDepth = 1; setCtl('ctl-depth-1', true); setCtl('ctl-depth-2', false); setCtl('ctl-depth-3', false); syncFrontpanel(); applyTraceFilters(); saveUiPrefs(); });
+$('ctl-depth-2').addEventListener('click', () => { traceDepth = 2; setCtl('ctl-depth-1', true); setCtl('ctl-depth-2', true); setCtl('ctl-depth-3', false); syncFrontpanel(); applyTraceFilters(); saveUiPrefs(); });
+$('ctl-depth-3').addEventListener('click', () => { traceDepth = 3; setCtl('ctl-depth-1', true); setCtl('ctl-depth-2', true); setCtl('ctl-depth-3', true); syncFrontpanel(); applyTraceFilters(); saveUiPrefs(); });
+$('ctl-ghost').addEventListener('click', () => { showGhost = !showGhost; setCtl('ctl-ghost', showGhost); syncFrontpanel(); applyTraceFilters(); saveUiPrefs(); });
+$('ctl-semantic').addEventListener('click', () => { showSemantic = !showSemantic; setCtl('ctl-semantic', showSemantic); syncFrontpanel(); applyTraceFilters(); saveUiPrefs(); });
+if ($('fp-depth')) $('fp-depth').addEventListener('input', e => {
+  traceDepth = Math.max(1, Math.min(3, parseInt(e.target.value || '3', 10)));
+  setCtl('ctl-depth-1', traceDepth >= 1);
+  setCtl('ctl-depth-2', traceDepth >= 2);
+  setCtl('ctl-depth-3', traceDepth >= 3);
+  syncFrontpanel();
+  applyTraceFilters();
+  saveUiPrefs();
+});
+if ($('fp-ghost')) $('fp-ghost').addEventListener('change', e => {
+  showGhost = !!e.target.checked;
+  setCtl('ctl-ghost', showGhost);
+  syncFrontpanel();
+  applyTraceFilters();
+  saveUiPrefs();
+});
+if ($('fp-semantic')) $('fp-semantic').addEventListener('change', e => {
+  showSemantic = !!e.target.checked;
+  setCtl('ctl-semantic', showSemantic);
+  syncFrontpanel();
+  applyTraceFilters();
+  saveUiPrefs();
+});
+if ($('fp-decay')) $('fp-decay').addEventListener('input', e => {
+  ghostAfterSec = Math.max(80, Math.min(420, parseInt(e.target.value || '180', 10)));
+  syncFrontpanel();
+  updateTraceAges();
+  saveUiPrefs();
+});
+if ($('fp-tension')) $('fp-tension').addEventListener('input', e => {
+  const v = Math.max(8, Math.min(35, parseInt(e.target.value || '15', 10)));
+  frothTension = v / 1000;
+  frothDamping = Math.max(0.82, Math.min(0.94, 0.97 - frothTension * 3.3));
+  syncFrontpanel();
+  kickFroth();
+  saveUiPrefs();
+});
+if ($('fp-focus-fail')) $('fp-focus-fail').addEventListener('click', () => focusFailures());
+if ($('fp-infer-only')) $('fp-infer-only').addEventListener('click', () => inferOnly());
+if ($('fp-reset')) $('fp-reset').addEventListener('click', () => resetLayout());
+if ($('act-focus-fail')) $('act-focus-fail').addEventListener('click', () => focusFailures());
+if ($('act-collapse-noninfer')) $('act-collapse-noninfer').addEventListener('click', () => inferOnly());
+if ($('act-expand-all')) $('act-expand-all').addEventListener('click', () => expandAll());
+if ($('act-reset-layout')) $('act-reset-layout').addEventListener('click', () => resetLayout());
+if ($('act-dump')) $('act-dump').addEventListener('click', () => dumpState());
+if ($('act-load')) $('act-load').addEventListener('click', () => loadState());
+if ($('timeline')) $('timeline').addEventListener('input', e => {
+  replayLive = false;
+  replayIdx = parseInt(e.target.value || '0', 10);
+  applyReplay();
+});
 document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { openCommandPalette(); e.preventDefault(); return; }
   const modal = $('help-modal');
+  const cmd = $('cmd-modal');
+  if (e.key === 'Escape' && cmd.classList.contains('show')) { closeCommandPalette(); return; }
   if (e.key === 'Escape' && modal.classList.contains('show')) { modal.classList.remove('show'); return; }
   if (e.key === '?') { modal.classList.toggle('show'); e.preventDefault(); return; }
+  if (e.key === '/' && !(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA'))) {
+    openCommandPalette(); e.preventDefault(); return;
+  }
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
   if (e.key === '1') $('ctl-depth-1').click();
   else if (e.key === '2') $('ctl-depth-2').click();
@@ -1289,6 +1903,23 @@ document.addEventListener('keydown', e => {
   else if (e.key.toLowerCase() === 's') $('ctl-semantic').click();
 });
 $('help-modal').addEventListener('click', e => { if (e.target.id === 'help-modal') e.currentTarget.classList.remove('show'); });
+$('cmd-modal').addEventListener('click', e => { if (e.target.id === 'cmd-modal') closeCommandPalette(); });
+$('cmd-input').addEventListener('input', e => renderCommandList(e.target.value || ''));
+$('cmd-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const first = $('cmd-list') && $('cmd-list').querySelector('.cmd-item');
+    if (first) first.click();
+  }
+});
+$('cmd-list').addEventListener('click', e => {
+  const row = e.target.closest('.cmd-item');
+  if (!row) return;
+  const idx = parseInt(row.getAttribute('data-cmd-idx') || '-1', 10);
+  const c = commandItems[idx];
+  if (c && typeof c.run === 'function') c.run();
+  closeCommandPalette();
+});
+$('timeline-val').addEventListener('click', () => { replayLive = true; applyReplay(); });
 $('froth').addEventListener('pointerdown', e => {
   const g = e.target.closest('.node');
   if (!g) return;
@@ -1317,6 +1948,14 @@ window.addEventListener('pointerup', () => {
   kickFroth();
 });
 conv.addEventListener('click', e => {
+  const act = e.target.closest('.msg-action');
+  if (act) {
+    const type = act.getAttribute('data-act');
+    if (type === 'retry-next-model') {
+      retryWithNextModel(act.getAttribute('data-msg') || '');
+      return;
+    }
+  }
   const h = e.target.closest('.trace-layer .lh');
   if (!h) return;
   const layer = h.closest('.trace-layer');
@@ -1341,18 +1980,25 @@ setCtl('ctl-depth-2', traceDepth >= 2);
 setCtl('ctl-depth-3', traceDepth >= 3);
 setCtl('ctl-ghost', showGhost);
 setCtl('ctl-semantic', showSemantic);
+syncFrontpanel();
+syncActionDock();
+initSplitterDrag();
+applySplit();
 fetch('/api/boot', {method:'POST'})
   .then(r => r.json())
   .then(d => {
     addMsg('coggy', `boot: ${d.atoms} atoms, ${d.links} links seeded. atomspace ready.`);
     refresh();
     refreshOpenRouterStatus(true);
+    refreshModelLedger(true);
   })
   .catch(e => addMsg('coggy', '⚠ boot failed: ' + e.message));
 refresh();
 refreshOpenRouterStatus(true);
+refreshModelLedger(true);
 setInterval(updateTraceAges, 4000);
 setInterval(() => refreshOpenRouterStatus(false), 60000);
+setInterval(() => refreshModelLedger(false), 15000);
 </script>
 </body>
 </html>")
@@ -1372,6 +2018,10 @@ setInterval(() => refreshOpenRouterStatus(false), 60000);
   (let [msg (:message body)]
     (log! (str "← " (subs msg 0 (min 80 (count msg)))))
     (let [result (repl/process-turn! msg)]
+      (try
+        (repl/dump-state!)
+        (catch Exception e
+          (log! (str "snapshot dump failed: " (.getMessage e)))))
       (log! (str "→ turn " (:turn result)
                  " | atoms " (get-in result [:stats :atoms])
                  " | ground " (get-in result [:semantic :grounding :concepts :rate])))
@@ -1394,9 +2044,18 @@ setInterval(() => refreshOpenRouterStatus(false), 60000);
                     :links (count (:links space))
                     :attention (:attention bank)
                     :focus (:focus bank)
+                    :budget {:sti-funds (:sti-funds bank)
+                             :lti-funds (:lti-funds bank)}
                     :model (:model @llm/config)
                     :hyle {:port hyle-port
                            :status (if hyle-ok? "up" "down")}})))
+
+(defn handle-metrics []
+  (let [m (sem/metrics-summary)
+        bank @(repl/bank)]
+    (json-response (assoc m
+                          :sti-funds (:sti-funds bank)
+                          :lti-funds (:lti-funds bank)))))
 
 (defn handle-boot []
   (let [space (repl/space)
@@ -1406,6 +2065,24 @@ setInterval(() => refreshOpenRouterStatus(false), 60000);
     (let [stats (as/space-stats space)]
       (json-response stats))))
 
+(defn handle-dump-state []
+  (json-response (repl/dump-state!)))
+
+(defn handle-load-state []
+  (json-response (repl/load-state!)))
+
+(defn handle-model [body]
+  (if-let [m (:model body)]
+    (do
+      (llm/configure! {:model (str m)})
+      (json-response {:ok true :model (:model @llm/config)}))
+    (json-response {:ok false :error "missing model"} :status 400)))
+
+(defn handle-domain [body]
+  (if-let [d (:domain body)]
+    (json-response (repl/activate-domain! d))
+    (json-response {:ok false :error "missing domain"} :status 400)))
+
 (defn handler [{:keys [uri request-method body]}]
   (try
     (case [request-method uri]
@@ -1414,13 +2091,20 @@ setInterval(() => refreshOpenRouterStatus(false), 60000);
                            :body index-html}
       [:get "/health"]    (json-response {:status "ok"})
       [:get "/api/state"] (handle-state)
+      [:get "/api/state/dump"] (handle-dump-state)
+      [:get "/api/state/load"] (handle-load-state)
       [:get "/api/logs"]  (json-response (:logs @server-state))
-      [:get "/api/metrics"] (json-response (sem/metrics-summary))
+      [:get "/api/metrics"] (handle-metrics)
       [:get "/api/openrouter/status"] (json-response (llm/doctor :json? false :silent? true))
+      [:get "/api/openrouter/models"] (json-response (llm/model-health-report))
 
       [:post "/api/chat"] (let [body (json/parse-string (slurp body) true)]
                             (handle-chat body))
       [:post "/api/boot"] (handle-boot)
+      [:post "/api/model"] (let [body (json/parse-string (slurp body) true)]
+                             (handle-model body))
+      [:post "/api/domain"] (let [body (json/parse-string (slurp body) true)]
+                              (handle-domain body))
 
       [:options "/api/chat"] {:status 200
                               :headers {"Access-Control-Allow-Origin" "*"

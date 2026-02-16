@@ -4,6 +4,7 @@
   "Entry point — Coggy wakes, boots, enters the loop."
   (:require [coggy.atomspace :as as]
             [coggy.attention :as att]
+            [cheshire.core :as json]
             [coggy.llm :as llm]
             [coggy.trace :as trace]
             [coggy.tui :as tui]
@@ -38,6 +39,7 @@
                  (boot/run-boot! (as/make-space) (att/make-bank)))
 
     "doctor" (llm/doctor :json? (= "--json" (second args)))
+    "connect" (println (json/generate-string (repl/connect-status) {:pretty true}))
 
     "serve"  (let [port (parse-long (or (second args) "8421"))]
                (println (tui/banner))
@@ -47,7 +49,15 @@
                  (reset! repl/session
                          {:space space :bank bank :history []
                           :turn 0 :concepts-seen #{}
+                          :active-domain nil
                           :started-at (System/currentTimeMillis)})
+                 (when (not= "0" (or (System/getenv "COGGY_AUTOLOAD_SNAPSHOT")
+                                     (System/getProperty "COGGY_AUTOLOAD_SNAPSHOT")
+                                     "1"))
+                   (let [r (repl/load-state!)]
+                     (when (:ok r)
+                       (println (str "snapshot loaded: " (:path r)
+                                     " (turn " (:turn r) ", atoms " (:atoms r) ")")))))
                  (web/start! port)))
 
     ;; Default: full REPL with boot
@@ -66,7 +76,15 @@
                  :history []
                  :turn 0
                  :concepts-seen #{}
+                 :active-domain nil
                  :started-at (System/currentTimeMillis)})
+        (when (not= "0" (or (System/getenv "COGGY_AUTOLOAD_SNAPSHOT")
+                            (System/getProperty "COGGY_AUTOLOAD_SNAPSHOT")
+                            "1"))
+          (let [r (repl/load-state!)]
+            (when (:ok r)
+              (println (str "snapshot loaded: " (:path r)
+                            " (turn " (:turn r) ", atoms " (:atoms r) ")")))))
 
         ;; Enter the loop
         (repl/repl-loop)))))

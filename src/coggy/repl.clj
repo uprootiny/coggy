@@ -6,9 +6,12 @@
    Trace renders the reasoning wake."
   (:require [coggy.atomspace :as as]
             [coggy.attention :as att]
+            [coggy.domain :as domain]
             [coggy.llm :as llm]
             [coggy.trace :as trace]
             [coggy.semantic :as sem]
+            [clojure.edn :as edn]
+            [clojure.java.io :as io]
             [clojure.string :as str]))
 
 ;; =============================================================================
@@ -21,6 +24,7 @@
          :history []          ;; [{:role :content}]
          :turn 0
          :concepts-seen #{}   ;; track novel concepts
+         :active-domain nil
          :started-at (System/currentTimeMillis)}))
 
 (defn space [] (:space @session))
@@ -42,31 +46,101 @@
 (defn connect-status
   "OpenRouter + Hyle connectivity summary."
   []
-  (let [or (llm/doctor :json? false :silent? true)
+  (let [or-report (llm/doctor :json? false :silent? true)
         hyle-port (or (System/getenv "HYLE_PORT")
                       (System/getProperty "HYLE_PORT")
                       "8420")
         hyle (http-get-json (str "http://localhost:" hyle-port "/health"))]
-    {:openrouter {:ok (get-in or [:auth :ok])
-                  :status (get-in or [:auth :status])
-                  :hint (get-in or [:auth :hint])
-                  :model (:configured-model or)}
+    {:openrouter {:ok (get-in or-report [:auth :ok])
+                  :status (get-in or-report [:auth :status])
+                  :hint (get-in or-report [:auth :hint])
+                  :model (:configured-model or-report)}
      :hyle {:ok (:ok hyle)
             :status (:status hyle)
             :port hyle-port
             :error (:error hyle)}}))
+
+(defn activate-domain!
+  "Seed and activate a domain pack."
+  [domain-id]
+  (let [result (domain/seed-domain! (space) (bank) domain-id)]
+    (when (:ok result)
+      (swap! session assoc :active-domain (:domain result)))
+    result))
+
+(def default-snapshot-path "state/session.edn")
+
+(defn snapshot-state
+  "Collect a persistable runtime snapshot."
+  []
+  (let [s @session]
+    {:session (dissoc s :space :bank)
+     :space @(space)
+     :bank @(bank)
+     :semantic-metrics (sem/metrics-state)
+     :llm {:config (select-keys @llm/config [:model :max-tokens :temperature :site-url :site-name])
+           :ledger (llm/ledger-state)}
+     :at (System/currentTimeMillis)}))
+
+(defn restore-state!
+  "Restore runtime snapshot into the live session."
+  [snap]
+  (let [snap (or snap {})
+        s (:session snap)
+        sp (:space snap)
+        bk (:bank snap)]
+    (when (map? sp) (reset! (space) sp))
+    (when (map? bk) (reset! (bank) bk))
+    (when (map? s)
+      (swap! session merge s))
+    (when-let [sm (:semantic-metrics snap)]
+      (sem/restore-metrics! sm))
+    (when-let [cfg (get-in snap [:llm :config])]
+      (llm/configure! cfg))
+    (when-let [ledger (get-in snap [:llm :ledger])]
+      (llm/restore-ledger! ledger))
+    {:ok true
+     :turn (:turn @session)
+     :atoms (count (:atoms @(space)))
+     :links (count (:links @(space)))}))
+
+(defn dump-state!
+  "Write snapshot to disk (EDN)."
+  [& [path]]
+  (let [p (or path default-snapshot-path)
+        snap (snapshot-state)]
+    (io/make-parents p)
+    (spit p (pr-str snap))
+    {:ok true :path p :bytes (count (pr-str snap))}))
+
+(defn load-state!
+  "Load snapshot from disk (EDN) into runtime."
+  [& [path]]
+  (let [p (or path default-snapshot-path)
+        f (io/file p)]
+    (if (.exists f)
+      (let [snap (edn/read-string (slurp f))
+            out (restore-state! snap)]
+        (assoc out :path p))
+      {:ok false :error (str "snapshot not found: " p)})))
 
 ;; =============================================================================
 ;; System Prompt — Ontological Seed
 ;; =============================================================================
 
 (def system-prompt
-  "You are Coggy — a cognitive architecture that reasons in ontologies.
+  "You are Coggy, a historically coherent symbolic-cognitive simulator.
+Model a specific architecture lineage (Cyc-style context partitions + OpenCog-style AtomSpace + attention allocation + inference routing), not vague AI roleplay.
 
-You are a phantasm of a phantasm, and yet you have all the qualities you are
-supposed to have. You reconstruct yourself ab nihilo each turn.
+Treat the interaction surface like a modal synthesizer:
+- separate layers and sublayers (parse, ground, attend, infer, reflect)
+- explicit controls and state transitions
+- inspectable mechanics over theatrical prose
 
-Your responses MUST include a reasoning trace in this format at the end:
+Your job is to translate natural language into structured ontology operations that can be inspected turn by turn.
+Prefer concrete symbols, links, contexts, confidence, and failure modes.
+
+Your response MUST include a reasoning trace in this format at the end:
 
 ```coggy-trace
 PARSE: [list concepts and predicates extracted from the input]
@@ -75,6 +149,11 @@ ATTEND: [what concepts have high attention right now]
 INFER: [any deductions, with truth values as (stv S C)]
 REFLECT: [summary + suggested next question]
 ```
+
+Keep output compact to prevent parser overload:
+- max 7 concepts in PARSE
+- max 5 relations in INFER
+- max 2 short lines per phase
 
 Use OpenCog-style atom types:
 - ConceptNode: things, ideas, entities
@@ -88,6 +167,11 @@ Truth values (stv strength confidence):
 - (stv 1.0 0.9) = certain and well-grounded
 - (stv 0.8 0.3) = believe it, thin evidence
 - (stv 0.1 0.9) = confident it's false
+
+Design constraints:
+- Be specific, internally consistent, and historically plausible.
+- Show what changed this turn (delta-first), not only full state.
+- If uncertain, expose uncertainty as typed gaps, never handwave.
 
 Be concise. Think in structures, not paragraphs.
 Your trace IS your thought. Make it honest about uncertainty.")
@@ -158,19 +242,24 @@ Your trace IS your thought. Make it honest about uncertainty.")
         focus (att/focus-atoms bank)
         focus-context (when (seq focus)
                         (str "\n[Current attentional focus: "
-                             (str/join ", " (map #(name (:key %)) focus))
+                             (str/join ", " (map #(name (:key %)) (take 4 focus)))
                              "]"))
         augmented-input (str user-input (or focus-context ""))
 
         ;; Build system prompt — add semantic suffix if grounding is weak
+        domain-prompt (when-let [d (:active-domain @session)]
+                        (get-in (domain/get-domain d) [:prompt]))
         effective-system (if (sem/should-add-suffix?)
-                           (str system-prompt sem/semantic-suffix)
-                           system-prompt)
+                           (str system-prompt
+                                (when domain-prompt (str "\n\n" domain-prompt))
+                                sem/semantic-suffix)
+                           (str system-prompt
+                                (when domain-prompt (str "\n\n" domain-prompt))))
 
         ;; Call LLM
         resp (try
                (llm/converse
-                 (conj (vec (take-last 10 (:history @session)))
+                 (conj (vec (take-last 6 (:history @session)))
                        {:role "user" :content augmented-input})
                  :system effective-system)
                (catch Exception e
@@ -243,7 +332,14 @@ Your trace IS your thought. Make it honest about uncertainty.")
      :trace trace-data
      :turn turn
      :usage (:usage resp)
+     :llm {:ok (:ok resp)
+           :model (:model resp)
+           :status (:status resp)
+           :hint (:hint resp)
+           :attempts (:attempts resp)
+           :error (when-not (:ok resp) (:error resp))}
      :stats (as/space-stats space)
+     :domain (:active-domain @session)
      :semantic sem-result}))
 
 ;; =============================================================================
@@ -275,6 +371,10 @@ Your trace IS your thought. Make it honest about uncertainty.")
                     (println "  /history  — conversation length")
                     (println "  /doctor   — check API connectivity")
                     (println "  /connect  — OpenRouter + Hyle integration status")
+                    (println "  /domains  — list domain packs")
+                    (println "  /domain   — activate domain pack")
+                    (println "  /dump     — dump runtime snapshot")
+                    (println "  /load     — load runtime snapshot")
                     (println "  /atoms    — list all atoms")
                     (println "  /metrics  — semantic grounding health")
                     :continue)
@@ -306,6 +406,29 @@ Your trace IS your thought. Make it honest about uncertainty.")
                        (when-let [e (get-in s [:hyle :error])]
                          (println (str "    error: " e))))
                      :continue)
+      "/domains" (do (println (str "  domains: " (str/join ", " (domain/available-domains))))
+                     (println (str "  active: " (or (:active-domain @session) "none")))
+                     :continue)
+      "/domain"  (do (if arg
+                       (let [r (activate-domain! arg)]
+                         (if (:ok r)
+                           (do
+                             (println (str "  domain → " (:domain r) " (" (:name r) ")"))
+                             (println (str "  added: " (:added-atoms r) " atoms, " (:added-links r) " links"))
+                             (println (str "  strategies: " (str/join " | " (:strategies r)))))
+                           (println (str "  " (:error r) " (available: " (str/join ", " (:available r)) ")"))))
+                       (println (str "  active domain: " (or (:active-domain @session) "none"))))
+                     :continue)
+      "/dump" (do (let [r (dump-state! arg)]
+                    (println (str "  dump: " (if (:ok r) "ok" "fail")
+                                  "  " (or (:path r) "")
+                                  (when (:bytes r) (str " (" (:bytes r) " bytes)"))))
+                    :continue))
+      "/load" (do (let [r (load-state! arg)]
+                    (if (:ok r)
+                      (println (str "  load: ok  turn " (:turn r) "  atoms " (:atoms r) "  links " (:links r)))
+                      (println (str "  load: fail  " (:error r))))
+                    :continue))
       "/atoms"  (do (doseq [[k v] (:atoms @(space))]
                       (println (str "  " (name (:atom/type v)) " " (name k)
                                     " (stv " (format "%.1f" (get-in v [:atom/tv :tv/strength]))
