@@ -33,9 +33,35 @@
 (defn configure! [opts]
   (swap! config merge opts))
 
+(defn key-source []
+  (cond
+    (seq (:api-key @config)) {:source :config :key (:api-key @config)}
+    (seq (System/getenv "OPENROUTER_API_KEY")) {:source :env :key (System/getenv "OPENROUTER_API_KEY")}
+    (seq (System/getProperty "OPENROUTER_API_KEY")) {:source :sysprop :key (System/getProperty "OPENROUTER_API_KEY")}
+    :else {:source :missing :key nil}))
+
 (defn api-key []
-  (or (:api-key @config)
-      (System/getenv "OPENROUTER_API_KEY")))
+  (:key (key-source)))
+
+(defn mask-key [k]
+  (if (seq k)
+    (str (subs k 0 (min 12 (count k))) "...")
+    "MISSING"))
+
+(defn parse-json-safe [s]
+  (try (json/parse-string (or s "{}") true)
+       (catch Exception _ nil)))
+
+(defn error-hint [{:keys [status error]}]
+  (cond
+    (nil? (api-key)) "Set OPENROUTER_API_KEY in .env or env, then run `coggy doctor`."
+    (= 401 status) "API key rejected. Replace OPENROUTER_API_KEY and retry."
+    (= 402 status) "Insufficient balance/rate plan. Use a free model or update OpenRouter credits."
+    (= 403 status) "Access denied for this model/key. Try another free model."
+    (= 404 status) "Model not found. Set a valid model with `/model` or `coggy doctor`."
+    (= 429 status) "Rate-limited. Wait and retry, or switch to a different free model."
+    (and (string? error) (str/includes? (str/lower-case error) "operation not permitted")) "Network egress blocked by host/sandbox. Allow outbound HTTPS to openrouter.ai."
+    :else "Run `coggy doctor --json` for details and fix hints."))
 
 ;; =============================================================================
 ;; API Calls
@@ -46,7 +72,6 @@
    messages: [{:role \"user\" :content \"...\"}]"
   [messages & {:keys [model system] :as opts}]
   (let [key (api-key)
-        _ (when-not key (throw (ex-info "No API key" {:hint "Set OPENROUTER_API_KEY or call configure!"})))
         model (or model (:model @config))
         body (cond-> {:model model
                       :messages (if system
@@ -55,26 +80,47 @@
                       :max_tokens (:max-tokens @config)
                       :temperature (:temperature @config)}
                true identity)
-        resp (http/post api-url
-                        {:headers {"Authorization" (str "Bearer " key)
-                                   "Content-Type" "application/json"
-                                   "HTTP-Referer" (:site-url @config)
-                                   "X-Title" (:site-name @config)}
-                         :body (json/generate-string body)
-                         :timeout 30000
-                         :throw false})]
-    (let [parsed (json/parse-string (:body resp) true)]
-      (if (= 200 (:status resp))
-        {:ok true
-         :content (get-in parsed [:choices 0 :message :content])
-         :model model
-         :usage (:usage parsed)
-         :raw parsed}
-        {:ok false
-         :status (:status resp)
-         :error (or (get-in parsed [:error :message])
-                    (:body resp))
-         :raw parsed}))))
+        base {:model model
+              :key-source (:source (key-source))
+              :request {:message-count (count messages)
+                        :system? (boolean system)}}]
+    (if-not key
+      {:ok false
+       :status :missing-key
+       :error "No API key"
+       :hint (error-hint {})
+       :diagnostics base}
+      (try
+        (let [resp (http/post api-url
+                              {:headers {"Authorization" (str "Bearer " key)
+                                         "Content-Type" "application/json"
+                                         "HTTP-Referer" (:site-url @config)
+                                         "X-Title" (:site-name @config)}
+                               :body (json/generate-string body)
+                               :timeout 30000
+                               :throw false})
+              parsed (parse-json-safe (:body resp))
+              err (or (get-in parsed [:error :message]) (:body resp))]
+          (if (= 200 (:status resp))
+            {:ok true
+             :content (get-in parsed [:choices 0 :message :content])
+             :model model
+             :usage (:usage parsed)
+             :raw parsed
+             :diagnostics base}
+            {:ok false
+             :status (:status resp)
+             :error err
+             :hint (error-hint {:status (:status resp) :error err})
+             :raw (or parsed {:body (:body resp)})
+             :diagnostics base}))
+        (catch Exception e
+          (let [msg (.getMessage e)]
+            {:ok false
+             :status :exception
+             :error msg
+             :hint (error-hint {:error msg})
+             :diagnostics base}))))))
 
 (defn ask
   "Simple question → answer. Returns content string or throws."
@@ -84,7 +130,7 @@
                    :model model)]
     (if (:ok resp)
       (:content resp)
-      (throw (ex-info "LLM error" resp)))))
+      (throw (ex-info (str "LLM error: " (:error resp)) resp)))))
 
 (defn converse
   "Multi-turn conversation. history is vec of {:role :content} maps."
@@ -101,16 +147,17 @@
 (defn list-models
   "Fetch available models from OpenRouter."
   []
-  (let [resp (http/get models-url
-                       {:headers {"Authorization" (str "Bearer " (api-key))}
-                        :timeout 10000
-                        :throw false})
-        parsed (json/parse-string (:body resp) true)]
-    (when (= 200 (:status resp))
-      (->> (:data parsed)
-           (mapv (fn [m] {:id (:id m)
-                          :name (:name m)
-                          :pricing (:pricing m)}))))))
+  (when-let [k (api-key)]
+    (let [resp (http/get models-url
+                         {:headers {"Authorization" (str "Bearer " k)}
+                          :timeout 10000
+                          :throw false})
+          parsed (parse-json-safe (:body resp))]
+      (when (= 200 (:status resp))
+        (->> (:data parsed)
+             (mapv (fn [m] {:id (:id m)
+                            :name (:name m)
+                            :pricing (:pricing m)})))))))
 
 (defn list-free-models
   "Filter to models with zero prompt pricing."
@@ -126,28 +173,38 @@
 ;; =============================================================================
 
 (defn doctor
-  "Check connectivity and key validity."
-  []
-  (println "coggy doctor")
-  (println "────────────")
-  (print "  API key: ")
-  (if (api-key)
-    (println (str (subs (api-key) 0 12) "..."))
-    (println "MISSING"))
-  (print "  Model: ")
-  (println (:model @config))
-  (print "  Connectivity: ")
-  (try
-    (let [resp (http/get "https://openrouter.ai/api/v1/models"
-                         {:timeout 5000 :throw false})]
-      (if (= 200 (:status resp))
-        (println "OK")
-        (println (str "HTTP " (:status resp)))))
-    (catch Exception e
-      (println (str "FAIL — " (.getMessage e)))))
-  (print "  Auth: ")
-  (try
-    (let [resp (ask "Say 'ok'" :model (first free-models))]
-      (println (str "OK — " (subs (str resp) 0 (min 30 (count (str resp)))))))
-    (catch Exception e
-      (println (str "FAIL — " (.getMessage e))))))
+  "Check connectivity and key validity. Use :json? true for inspectable JSON output."
+  [& {:keys [json? silent?] :or {json? false silent? false}}]
+  (let [ks (key-source)
+        conn (try
+               (let [resp (http/get models-url {:timeout 5000 :throw false})]
+                 {:ok (= 200 (:status resp)) :status (:status resp)})
+               (catch Exception e
+                 {:ok false :status :exception :error (.getMessage e)}))
+        probe (chat [{:role "user" :content "Say ok"}] :model (or (:model @config) (first free-models)))
+        report {:provider :openrouter
+                :configured-model (:model @config)
+                :key {:present (boolean (:key ks))
+                      :source (:source ks)
+                      :masked (mask-key (:key ks))}
+                :connectivity conn
+                :auth {:ok (:ok probe)
+                       :status (:status probe)
+                       :error (:error probe)
+                       :hint (or (:hint probe) (error-hint probe))}
+                :fixes [(error-hint probe)
+                        "Use `/model <id>` to switch to another free model."
+                        "Inspect status via GET /api/openrouter/status or `coggy doctor --json`." ]}]
+    (if json?
+      (when-not silent?
+        (println (json/generate-string report {:pretty true})))
+      (when-not silent?
+        (println "coggy doctor")
+        (println "────────────")
+        (println (str "  provider: openrouter"))
+        (println (str "  API key: " (get-in report [:key :masked]) " (" (name (get-in report [:key :source])) ")"))
+        (println (str "  model: " (:configured-model report)))
+        (println (str "  connectivity: " (if (get-in report [:connectivity :ok]) "OK" (str "FAIL — " (or (get-in report [:connectivity :error]) (get-in report [:connectivity :status]))))))
+        (println (str "  auth: " (if (get-in report [:auth :ok]) "OK" (str "FAIL — " (get-in report [:auth :error])))))
+        (println (str "  hint: " (get-in report [:auth :hint])))))
+    report))

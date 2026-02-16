@@ -37,7 +37,7 @@
     "boot"   (do (println (tui/banner))
                  (boot/run-boot! (as/make-space) (att/make-bank)))
 
-    "doctor" (llm/doctor)
+    "doctor" (llm/doctor :json? (= "--json" (second args)))
 
     "serve"  (let [port (parse-long (or (second args) "8421"))]
                (println (tui/banner))

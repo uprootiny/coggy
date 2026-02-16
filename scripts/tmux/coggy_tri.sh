@@ -15,7 +15,7 @@ set -euo pipefail
 COGGY_DIR="${COGGY_DIR:-/home/uprootiny/coggy}"
 COGGY_PORT="${COGGY_PORT:-8421}"
 HYLE_PORT="${HYLE_PORT:-8420}"
-SESSION="coggy"
+SESSION="${COGGY_SESSION:-coggy-${COGGY_PORT}}"
 
 # Kill existing session
 tmux kill-session -t "$SESSION" 2>/dev/null || true
