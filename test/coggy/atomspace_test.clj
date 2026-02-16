@@ -3,13 +3,18 @@
 (ns coggy.atomspace-test
   (:require [coggy.atomspace :as as]
             [coggy.attention :as att]
-            [coggy.trace :as trace]))
+            [coggy.trace :as trace]
+            [coggy.tui :as tui]
+            [coggy.boot :as boot]
+            [coggy.llm :as llm]
+            [coggy.repl :as repl]
+            [clojure.string :as str]))
 
 ;; =============================================================================
-;; Minimal test runner
+;; Test Runner
 ;; =============================================================================
 
-(def ^:dynamic *tests* (atom {:pass 0 :fail 0 :total 0}))
+(def ^:dynamic *tests* (atom {:pass 0 :fail 0 :total 0 :assertions 0}))
 
 (defmacro deftest [name & body]
   `(do
@@ -22,6 +27,7 @@
      (swap! *tests* update :total inc)))
 
 (defn is [pred msg]
+  (swap! *tests* update :assertions inc)
   (when-not pred
     (throw (ex-info (str "Assertion failed: " msg) {}))))
 
@@ -35,17 +41,74 @@
   (let [c (as/concept "dog")]
     (is (= :ConceptNode (:atom/type c)) "type should be ConceptNode")
     (is (= :dog (:atom/name c)) "name should be :dog")
-    (is (number? (get-in c [:atom/tv :tv/strength])) "should have truth value")))
+    (is (number? (get-in c [:atom/tv :tv/strength])) "should have truth value")
+    (is (number? (get-in c [:atom/tv :tv/confidence])) "should have confidence")))
+
+(deftest concept-with-custom-tv
+  (let [c (as/concept "cat" (as/stv 0.9 0.8))]
+    (is (= 0.9 (get-in c [:atom/tv :tv/strength])) "custom strength")
+    (is (= 0.8 (get-in c [:atom/tv :tv/confidence])) "custom confidence")))
 
 (deftest predicate-creation
   (let [p (as/predicate "likes")]
     (is (= :PredicateNode (:atom/type p)) "type should be PredicateNode")
     (is (= :likes (:atom/name p)) "name should be :likes")))
 
+(deftest variable-creation
+  (let [v (as/variable "X")]
+    (is (= :VariableNode (:atom/type v)) "type should be VariableNode")
+    (is (= :X (:atom/name v)) "name should be :X")))
+
 (deftest truth-values
   (let [tv (as/stv 0.8 0.9)]
     (is (= 0.8 (:tv/strength tv)) "strength")
-    (is (= 0.9 (:tv/confidence tv)) "confidence")))
+    (is (= 0.9 (:tv/confidence tv)) "confidence")
+    (is (= :simple (:tv/type tv)) "type should be simple")))
+
+(deftest truth-value-constants
+  (is (= 1.0 (:tv/strength as/tv-true)) "tv-true strength")
+  (is (= 0.0 (:tv/strength as/tv-false)) "tv-false strength")
+  (is (= 0.5 (:tv/strength as/tv-default)) "tv-default strength"))
+
+(deftest link-creation
+  (let [child (as/concept "dog")
+        parent (as/concept "animal")
+        link (as/inheritance child parent)]
+    (is (= :InheritanceLink (:atom/type link)) "type")
+    (is (= child (:link/source link)) "source")
+    (is (= parent (:link/target link)) "target")))
+
+(deftest evaluation-link
+  (let [pred (as/predicate "likes")
+        subj (as/concept "alice")
+        obj (as/concept "bob")
+        link (as/evaluation pred subj obj)]
+    (is (= :EvaluationLink (:atom/type link)) "type")
+    (is (= pred (:link/predicate link)) "predicate")
+    (is (= [subj obj] (:link/args link)) "args")))
+
+(deftest implication-link
+  (let [a (as/concept "rain")
+        b (as/concept "wet")
+        link (as/implication a b (as/stv 0.9 0.8))]
+    (is (= :ImplicationLink (:atom/type link)) "type")
+    (is (= a (:link/antecedent link)) "antecedent")
+    (is (= b (:link/consequent link)) "consequent")))
+
+(deftest similarity-link
+  (let [a (as/concept "cat")
+        b (as/concept "dog")
+        link (as/similarity a b)]
+    (is (= :SimilarityLink (:atom/type link)) "type")
+    (is (= a (:link/first link)) "first")
+    (is (= b (:link/second link)) "second")))
+
+(deftest context-link
+  (let [ctx (as/concept "physics")
+        atom (as/concept "mass")
+        link (as/context-link ctx atom)]
+    (is (= :ContextLink (:atom/type link)) "type")
+    (is (= ctx (:link/context link)) "context")))
 
 (deftest atomspace-operations
   (let [space (as/make-space)]
@@ -54,14 +117,34 @@
     (as/add-link! space (as/inheritance (as/concept "cat") (as/concept "animal")))
     (let [stats (as/space-stats space)]
       (is (= 2 (:atoms stats)) "should have 2 atoms")
-      (is (= 1 (:links stats)) "should have 1 link"))))
+      (is (= 1 (:links stats)) "should have 1 link")
+      (is (= 3 (:counter stats)) "counter should be 3"))))
+
+(deftest get-atom
+  (let [space (as/make-space)]
+    (as/add-atom! space (as/concept "dog"))
+    (let [found (as/get-atom space "dog")]
+      (is (some? found) "should find atom")
+      (is (= :ConceptNode (:atom/type found)) "should be ConceptNode"))
+    (is (nil? (as/get-atom space "cat")) "should not find missing atom")))
+
+(deftest get-atoms-by-type
+  (let [space (as/make-space)]
+    (as/add-atom! space (as/concept "dog"))
+    (as/add-atom! space (as/concept "cat"))
+    (as/add-atom! space (as/predicate "likes"))
+    (let [concepts (as/get-atoms-by-type space :ConceptNode)]
+      (is (= 2 (count concepts)) "should find 2 concepts"))))
 
 (deftest query-links
   (let [space (as/make-space)]
     (as/add-link! space (as/inheritance (as/concept "dog") (as/concept "animal")))
     (as/add-link! space (as/inheritance (as/concept "cat") (as/concept "animal")))
-    (let [results (as/query-links space #(= :InheritanceLink (:atom/type %)))]
-      (is (= 2 (count results)) "should find 2 inheritance links"))))
+    (as/add-link! space (as/similarity (as/concept "dog") (as/concept "cat")))
+    (let [inh (as/query-links space #(= :InheritanceLink (:atom/type %)))
+          sim (as/query-links space #(= :SimilarityLink (:atom/type %)))]
+      (is (= 2 (count inh)) "should find 2 inheritance links")
+      (is (= 1 (count sim)) "should find 1 similarity link"))))
 
 ;; =============================================================================
 ;; Attention Tests
@@ -69,7 +152,25 @@
 
 (println "Testing coggy.attention\n")
 
-(deftest attention-bank
+(deftest attention-bank-creation
+  (let [bank (att/make-bank)]
+    (is (= 7 (:af-size @bank)) "default focus size 7±2")
+    (is (= 100.0 (:sti-funds @bank)) "default STI funds")))
+
+(deftest attention-stimulate
+  (let [bank (att/make-bank)]
+    (att/stimulate! bank :dog 10.0)
+    (let [sti (get-in @bank [:attention :dog :av/sti])]
+      (is (= 10.0 sti) "STI should be 10.0"))
+    (is (= 90.0 (:sti-funds @bank)) "funds should decrease")))
+
+(deftest attention-cumulative
+  (let [bank (att/make-bank)]
+    (att/stimulate! bank :dog 5.0)
+    (att/stimulate! bank :dog 3.0)
+    (is (= 8.0 (get-in @bank [:attention :dog :av/sti])) "STI should accumulate")))
+
+(deftest attention-focus
   (let [bank (att/make-bank)]
     (att/stimulate! bank :dog 10.0)
     (att/stimulate! bank :cat 5.0)
@@ -77,13 +178,31 @@
     (is (att/in-focus? bank :dog) "dog should be in focus")
     (is (att/in-focus? bank :cat) "cat should be in focus")))
 
+(deftest attention-focus-ordering
+  (let [bank (att/make-bank)]
+    (att/stimulate! bank :a 1.0)
+    (att/stimulate! bank :b 5.0)
+    (att/stimulate! bank :c 10.0)
+    (att/update-focus! bank)
+    (let [focus (att/focus-atoms bank)]
+      (is (= :c (:key (first focus))) "highest STI first"))))
+
 (deftest attention-decay
   (let [bank (att/make-bank)]
     (att/stimulate! bank :dog 10.0)
     (att/decay! bank 0.5)
     (att/update-focus! bank)
-    (let [focus (att/focus-atoms bank)]
-      (is (< (:sti (first focus)) 10.0) "STI should have decayed"))))
+    (let [focus (att/focus-atoms bank)
+          sti (:sti (first focus))]
+      (is (= 5.0 sti) "STI should halve after 0.5 decay"))))
+
+(deftest attention-focus-limit
+  (let [bank (att/make-bank)]
+    ;; Add more atoms than focus size (7)
+    (doseq [i (range 10)]
+      (att/stimulate! bank (keyword (str "atom-" i)) (double i)))
+    (att/update-focus! bank)
+    (is (= 7 (count (:focus @bank))) "focus should be capped at af-size")))
 
 ;; =============================================================================
 ;; Trace Tests
@@ -91,7 +210,7 @@
 
 (println "Testing coggy.trace\n")
 
-(deftest trace-rendering
+(deftest trace-full-render
   (let [phases {:parse [(as/concept "test")]
                 :ground {:found ["context"] :missing ["history"]}
                 :attend [{:key :test :sti 8.0}]
@@ -100,16 +219,192 @@
                           :focus-concept "test"
                           :next-question "what next?"}}
         rendered (trace/render-trace phases)]
-    (is (clojure.string/includes? rendered "COGGY") "should contain COGGY header")
-    (is (clojure.string/includes? rendered "PARSE") "should contain PARSE phase")
-    (is (clojure.string/includes? rendered "REFLECT") "should contain REFLECT phase")))
+    (is (str/includes? rendered "COGGY") "should contain COGGY header")
+    (is (str/includes? rendered "PARSE") "should contain PARSE phase")
+    (is (str/includes? rendered "GROUND") "should contain GROUND phase")
+    (is (str/includes? rendered "ATTEND") "should contain ATTEND phase")
+    (is (str/includes? rendered "INFER") "should contain INFER phase")
+    (is (str/includes? rendered "REFLECT") "should contain REFLECT phase")
+    (is (str/includes? rendered "test works") "should contain inference")
+    (is (str/includes? rendered "what next?") "should contain next question")))
+
+(deftest trace-partial-render
+  (let [phases {:parse [(as/concept "minimal")]}
+        rendered (trace/render-trace phases)]
+    (is (str/includes? rendered "PARSE") "should have PARSE")
+    (is (not (str/includes? rendered "ATTEND")) "should not have ATTEND")))
+
+(deftest trace-mini-render
+  (let [rendered (trace/render-mini-trace {:focus "test" :action "query" :result "ok"})]
+    (is (str/includes? rendered "test") "should contain focus")
+    (is (str/includes? rendered "query") "should contain action")))
+
+(deftest trace-multiple-inferences
+  (let [phases {:infer [{:type :deduction :conclusion "A→C" :tv (as/stv 0.9 0.8)}
+                        {:type :abduction :conclusion "A~B" :tv (as/stv 0.5 0.3)}
+                        {:type :gap :conclusion "missing evidence"}]}
+        rendered (trace/render-trace phases)]
+    (is (str/includes? rendered "A→C") "deduction")
+    (is (str/includes? rendered "A~B") "abduction")
+    (is (str/includes? rendered "missing evidence") "gap")))
+
+;; =============================================================================
+;; TUI Tests
+;; =============================================================================
+
+(println "Testing coggy.tui\n")
+
+(deftest tui-banner
+  (let [b (tui/banner)]
+    (is (str/includes? b "C O G G Y") "banner should contain title")
+    (is (str/includes? b "ὕλη") "banner should contain hyle")))
+
+(deftest tui-status-bar
+  (let [bar (tui/status-bar {:turn 5 :atoms 14 :links 6 :focus "coggy" :model "test"})]
+    (is (str/includes? bar "turn:5") "should show turn")
+    (is (str/includes? bar "atoms:14") "should show atoms")))
+
+(deftest tui-colors
+  (is (str/includes? (tui/c "hello" :bold) "hello") "colored text should contain original")
+  (is (str/includes? (tui/c "hello" :bold) "\033[") "should contain escape codes"))
+
+(deftest tui-trace-panel
+  (let [phases {:parse [(as/concept "test")]
+                :attend [{:key :test :sti 12.0}]}
+        rendered (tui/trace-panel phases)]
+    (is (str/includes? rendered "COGGY") "should have header")
+    (is (str/includes? rendered "PARSE") "should have PARSE")
+    (is (str/includes? rendered "★") "high STI should get star glyph")))
+
+;; =============================================================================
+;; Boot Smoke Tests
+;; =============================================================================
+
+(println "Testing coggy.boot\n")
+
+(deftest boot-seeds-ontology
+  (let [space (as/make-space)
+        bank (att/make-bank)]
+    (boot/seed-ontology! space bank)
+    (let [stats (as/space-stats space)]
+      (is (>= (:atoms stats) 10) "boot should seed at least 10 atoms")
+      (is (>= (:links stats) 4) "boot should seed at least 4 links"))))
+
+(deftest boot-seeds-attention
+  (let [space (as/make-space)
+        bank (att/make-bank)]
+    (boot/seed-ontology! space bank)
+    (is (att/in-focus? bank :coggy) "coggy should be in focus after boot")
+    (is (att/in-focus? bank :ontology) "ontology should be in focus")))
+
+(deftest boot-trace-generation
+  (let [space (as/make-space)
+        bank (att/make-bank)]
+    (boot/seed-ontology! space bank)
+    (let [bt (boot/boot-trace space bank)]
+      (is (seq (:parse bt)) "boot trace should have parse")
+      (is (seq (:attend bt)) "boot trace should have attend")
+      (is (seq (:infer bt)) "boot trace should have infer")
+      (is (:reflect bt) "boot trace should have reflect"))))
+
+(deftest boot-self-concepts
+  (let [space (as/make-space)
+        bank (att/make-bank)]
+    (boot/seed-ontology! space bank)
+    (is (some? (as/get-atom space "coggy")) "should have coggy concept")
+    (is (some? (as/get-atom space "hyle")) "should have hyle concept")
+    (is (some? (as/get-atom space "ontology")) "should have ontology concept")
+    (is (some? (as/get-atom space "phantasm")) "should have phantasm concept")))
+
+;; =============================================================================
+;; REPL Smoke Tests (no LLM calls)
+;; =============================================================================
+
+(println "Testing coggy.repl\n")
+
+(deftest repl-concept-extraction
+  (let [concepts (repl/extract-concepts-from-text "the dog likes big cats")]
+    (is (some #(= "dog" %) concepts) "should extract dog")
+    (is (some #(= "likes" %) concepts) "should extract likes")
+    (is (some #(= "big" %) concepts) "should extract big")
+    (is (some #(= "cats" %) concepts) "should extract cats")
+    (is (not (some #(= "the" %) concepts)) "should filter stopwords")))
+
+(deftest repl-concept-extraction-limit
+  (let [text "aardvark baboon cheetah dingo elephant flamingo gorilla hippo iguana"
+        concepts (repl/extract-concepts-from-text text)]
+    (is (<= (count concepts) 7) "should limit to 7 concepts")))
+
+(deftest repl-trace-block-extraction
+  (let [text "Here is my answer.\n```coggy-trace\nPARSE: concepts\n```\nMore text."]
+    (is (some? (repl/extract-trace-block text)) "should find trace block")
+    (is (str/includes? (repl/extract-trace-block text) "PARSE") "should contain PARSE")))
+
+(deftest repl-trace-block-missing
+  (is (nil? (repl/extract-trace-block "no trace here")) "should return nil when no trace"))
+
+(deftest repl-commands
+  (is (= :quit (repl/handle-command "/quit")) "/quit returns :quit")
+  (is (= :quit (repl/handle-command "/exit")) "/exit returns :quit")
+  (is (= :continue (repl/handle-command "/help")) "/help returns :continue")
+  (is (= :continue (repl/handle-command "/stats")) "/stats returns :continue"))
+
+;; =============================================================================
+;; LLM Config Tests (no network)
+;; =============================================================================
+
+(println "Testing coggy.llm\n")
+
+(deftest llm-config
+  (is (some? (:model @llm/config)) "should have default model")
+  (is (pos? (:max-tokens @llm/config)) "should have positive max-tokens"))
+
+(deftest llm-configure
+  (let [orig-model (:model @llm/config)]
+    (llm/configure! {:model "test-model"})
+    (is (= "test-model" (:model @llm/config)) "configure should update model")
+    (llm/configure! {:model orig-model})))
+
+(deftest llm-free-models
+  (is (seq llm/free-models) "should have free models list")
+  (is (every? string? llm/free-models) "all models should be strings"))
+
+;; =============================================================================
+;; Integration Smoke Test
+;; =============================================================================
+
+(println "Testing integration\n")
+
+(deftest full-boot-to-trace
+  (let [space (as/make-space)
+        bank (att/make-bank)]
+    ;; Boot
+    (boot/seed-ontology! space bank)
+    ;; Simulate concept extraction
+    (let [concepts ["reasoning" "structure" "truth"]]
+      (doseq [c concepts]
+        (as/add-atom! space (as/concept c))
+        (att/stimulate! bank (keyword c) 8.0))
+      (att/decay! bank 0.1)
+      (att/update-focus! bank)
+      ;; Build and render trace
+      (let [trace-data {:parse (mapv as/concept concepts)
+                        :attend (att/focus-atoms bank)
+                        :reflect {:new-atoms 3 :updated 0
+                                  :focus-concept "coggy"}}
+            rendered (trace/render-trace trace-data)]
+        (is (str/includes? rendered "reasoning") "trace should contain concepts")
+        (is (str/includes? rendered "ATTEND") "trace should have attention")))))
 
 ;; =============================================================================
 ;; Results
 ;; =============================================================================
 
-(println "")
-(let [{:keys [pass fail total]} @*tests*]
-  (println (str total " tests, " pass " passed, " fail " failed."))
+(println "\n════════════════════════════════════════")
+(let [{:keys [pass fail total assertions]} @*tests*]
+  (println (str total " tests, " assertions " assertions, "
+               pass " passed, " fail " failed."))
   (when (pos? fail)
-    (System/exit 1)))
+    (println "SOME TESTS FAILED")
+    (System/exit 1))
+  (println "ALL TESTS PASSED"))

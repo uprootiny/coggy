@@ -73,20 +73,14 @@
 
 (defn term-width []
   (try
-    (let [result (-> (ProcessBuilder. ["tput" "cols"])
-                     (.inheritIO)
-                     (.redirectOutput ProcessBuilder$Redirect/PIPE)
-                     (.start))]
-      (parse-long (str/trim (slurp (.getInputStream result)))))
+    (let [{:keys [out]} (babashka.process/shell {:out :string} "tput" "cols")]
+      (parse-long (str/trim out)))
     (catch Exception _ 80)))
 
 (defn term-height []
   (try
-    (let [result (-> (ProcessBuilder. ["tput" "lines"])
-                     (.inheritIO)
-                     (.redirectOutput ProcessBuilder$Redirect/PIPE)
-                     (.start))]
-      (parse-long (str/trim (slurp (.getInputStream result)))))
+    (let [{:keys [out]} (babashka.process/shell {:out :string} "tput" "lines")]
+      (parse-long (str/trim out)))
     (catch Exception _ 24)))
 
 ;; =============================================================================

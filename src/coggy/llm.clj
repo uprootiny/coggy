@@ -16,11 +16,11 @@
 (def models-url "https://openrouter.ai/api/v1/models")
 
 (def free-models
-  ["mistralai/devstral-small:free"
-   "mistralai/mistral-7b-instruct:free"
-   "meta-llama/llama-3.2-3b-instruct:free"
-   "google/gemma-2-9b-it:free"
-   "qwen/qwen-2-7b-instruct:free"])
+  ["qwen/qwen3-next-80b-a3b-instruct:free"
+   "nvidia/nemotron-nano-12b-v2-vl:free"
+   "nvidia/nemotron-3-nano-30b-a3b:free"
+   "openai/gpt-oss-120b:free"
+   "openrouter/free"])
 
 (defonce config
   (atom {:api-key nil

@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Babashka
+        run: |
+          curl -sLO https://raw.githubusercontent.com/babashka/babashka/master/install
+          chmod +x install
+          sudo ./install
+
+      - name: Verify bb
+        run: bb --version
+
+      - name: Run tests
+        run: bb test/coggy/atomspace_test.clj
+
+      - name: Smoke test boot
+        run: |
+          bb -e '
+          (require (quote [coggy.atomspace :as as])
+                   (quote [coggy.attention :as att])
+                   (quote [coggy.boot :as boot]))
+          (let [space (as/make-space)
+                bank (att/make-bank)]
+            (boot/seed-ontology! space bank)
+            (let [stats (as/space-stats space)]
+              (assert (>= (:atoms stats) 10) "boot should seed atoms")
+              (assert (>= (:links stats) 4) "boot should seed links")
+              (println (str "Boot OK: " (:atoms stats) " atoms, " (:links stats) " links"))))'
+
+      - name: Smoke test web server startup
+        run: |
+          bb -e '
+          (require (quote [coggy.atomspace :as as])
+                   (quote [coggy.attention :as att])
+                   (quote [coggy.boot :as boot])
+                   (quote [coggy.repl :as repl])
+                   (quote [coggy.web :as web])
+                   (quote [org.httpkit.server :as srv])
+                   (quote [babashka.http-client :as http]))
+          (let [space (as/make-space)
+                bank (att/make-bank)]
+            (boot/seed-ontology! space bank)
+            (reset! repl/session
+                    {:space space :bank bank :history []
+                     :turn 0 :concepts-seen #{}
+                     :started-at (System/currentTimeMillis)})
+            (let [stop-fn (srv/run-server web/handler {:port 18421})]
+              (Thread/sleep 500)
+              (let [resp (http/get "http://localhost:18421/health" {:throw false})]
+                (assert (= 200 (:status resp)) "health should return 200"))
+              (let [resp (http/get "http://localhost:18421/api/state" {:throw false})]
+                (assert (= 200 (:status resp)) "state should return 200"))
+              (let [resp (http/get "http://localhost:18421/" {:throw false})]
+                (assert (= 200 (:status resp)) "index should return 200"))
+              (stop-fn)
+              (println "Web server smoke test OK")))'
