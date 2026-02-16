@@ -13,6 +13,7 @@
             [coggy.attention :as att]
             [coggy.llm :as llm]
             [coggy.boot :as boot]
+            [coggy.integrations.ibid :as ibid]
             [coggy.repl :as repl]
             [coggy.trace :as trace]
             [coggy.semantic :as sem]))
@@ -582,6 +583,8 @@ body::after{
 .or-body{font-size:10px;line-height:1.45;color:#c5d1df}
 .or-body .hint{color:#9eb0c6}
 .or-body .mono{font-family:'JetBrains Mono','Fira Code',monospace;color:#e8f0fb}
+.or-actions{margin-top:6px;display:flex;justify-content:flex-end}
+.or-actions .fp-btn{padding:4px 8px;font-size:10px}
 .or-models{font-size:10px;line-height:1.35;color:#c5d1df}
 .or-model-row{
   display:grid;grid-template-columns:1.8fr .55fr .6fr .6fr;gap:6px;
@@ -811,6 +814,16 @@ body::after{
         </div>
         <div class='or-models' id='or-models'>no samples yet</div>
       </div>
+      <div class='or-panel'>
+        <div class='or-head'>
+          <span>IBID Feed</span>
+          <span id='ibid-when'>—</span>
+        </div>
+        <div class='or-body' id='ibid-body'>no ingestion runs</div>
+        <div class='or-actions'>
+          <button class='fp-btn' id='ibid-ingest'>ingest corpus</button>
+        </div>
+      </div>
       <div class='focus-set' id='focus-set'>
         <div class='fh'>ATTENTIONAL FOCUS</div>
       </div>
@@ -833,6 +846,8 @@ body::after{
       <div class='help-row'><b>1 / 2 / 3</b> trace depth layers</div>
       <div class='help-row'><b>g</b> toggle ghost traces</div>
       <div class='help-row'><b>s</b> toggle semantic coloring</div>
+      <div class='help-row'><b>/ or Ctrl+K</b> open command palette</div>
+      <div class='help-row'><b>↑ / ↓</b> move within palette</div>
       <div class='help-row'><b>Enter</b> send current prompt</div>
       <div class='help-row'><b>Esc</b> close help panel</div>
       <div class='help-row'><b>?</b> open/close this panel</div>
@@ -871,6 +886,7 @@ let msgSeq = 0;
 let replayLive = true;
 let replayIdx = -1;
 let commandItems = [];
+let commandSel = 0;
 
 // ── Render helpers ──
 
@@ -1315,8 +1331,18 @@ async function retryWithNextModel(msg) {
 
 async function dumpState() {
   try {
-    const d = await fetch('/api/state/dump').then(r => r.json());
-    addMsg('coggy', d.ok ? `snapshot dumped → ${d.path}` : `snapshot dump failed: ${d.error || '?'}`, null, d.bytes ? [`${d.bytes} bytes`] : null);
+    const d = await fetch('/api/state/dump', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({mode:'versioned'})
+    }).then(r => r.json());
+    if (d.ok) {
+      const p = (d.versioned && d.versioned.path) || (d.latest && d.latest.path) || '?';
+      const b = (d.versioned && d.versioned.bytes) || 0;
+      addMsg('coggy', `snapshot dumped → ${p}`, null, b ? [`${b} bytes`] : null);
+    } else {
+      addMsg('coggy', `snapshot dump failed: ${d.error || '?'}`);
+    }
   } catch (e) {
     addMsg('coggy', '⚠ dump failed: ' + e.message);
   }
@@ -1324,15 +1350,92 @@ async function dumpState() {
 
 async function loadState() {
   try {
-    const d = await fetch('/api/state/load').then(r => r.json());
+    const d = await fetch('/api/state/load', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({latest:true})
+    }).then(r => r.json());
     if (d.ok) {
-      addMsg('coggy', `snapshot reloaded (${d.atoms} atoms, ${d.links} links)`, null, [`turn ${d.turn}`]);
+      addMsg('coggy', `snapshot reloaded (${d.atoms} atoms, ${d.links} links)`, null, [`turn ${d.turn}`, d.path || 'latest']);
       await refresh();
     } else {
       addMsg('coggy', `snapshot load failed: ${d.error || '?'}`);
     }
   } catch (e) {
     addMsg('coggy', '⚠ load failed: ' + e.message);
+  }
+}
+
+async function fetchSnapshots() {
+  const d = await fetch('/api/state/snapshots').then(r => r.json());
+  return (d && d.snapshots) ? d.snapshots : [];
+}
+
+async function loadPreviousSnapshot() {
+  try {
+    const snaps = await fetchSnapshots();
+    if (!snaps.length) {
+      addMsg('coggy', 'no snapshots available');
+      return;
+    }
+    const pick = snaps[Math.min(1, snaps.length - 1)];
+    const p = pick.path;
+    const d = await fetch('/api/state/load', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({path:p})
+    }).then(r => r.json());
+    if (d.ok) {
+      addMsg('coggy', `snapshot loaded → ${pick.name}`, null, [`turn ${d.turn}`]);
+      await refresh();
+    } else {
+      addMsg('coggy', `snapshot load failed: ${d.error || '?'}`);
+    }
+  } catch (e) {
+    addMsg('coggy', '⚠ snapshot load failed: ' + e.message);
+  }
+}
+
+function renderIbidStatus(d) {
+  const body = $('ibid-body');
+  const when = $('ibid-when');
+  if (!body || !d) return;
+  const runs = Number(d.runs || 0);
+  const cases = Number(d['loaded-cases'] || 0);
+  const err = d['last-error'];
+  const last = d.last || {};
+  body.innerHTML = `<div>runs: <span class='mono'>${runs}</span> · loaded: <span class='mono'>${cases}</span></div>
+    <div>last path: <span class='mono'>${escTrace(d['last-path'] || '—')}</span></div>
+    <div>last ingest: <span class='mono'>${last.ok ? ('ok · ' + (last.cases || 0) + ' cases') : (err ? 'fail' : 'none')}</span></div>
+    ${err ? `<div class='hint'>${escTrace(err)}</div>` : ''}`;
+  if (when) when.textContent = new Date().toLocaleTimeString();
+}
+
+async function refreshIbidStatus() {
+  try {
+    const d = await fetch('/api/ibid/status').then(r => r.json());
+    renderIbidStatus(d);
+  } catch (_) {
+    renderIbidStatus({runs:0, 'loaded-cases':0, 'last-error':'status unreachable'});
+  }
+}
+
+async function ingestIbidCorpus() {
+  try {
+    const d = await fetch('/api/ibid/ingest', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({})
+    }).then(r => r.json());
+    if (d.ok) {
+      addMsg('coggy', `IBID ingest ok: ${d.cases} cases`, null, [`+${d['added-atoms']} atoms`, `+${d['added-links']} links`]);
+    } else {
+      addMsg('coggy', `IBID ingest failed: ${d.error || '?'}`);
+    }
+    await refreshIbidStatus();
+    await refresh();
+  } catch (e) {
+    addMsg('coggy', '⚠ IBID ingest failed: ' + e.message);
   }
 }
 
@@ -1785,6 +1888,7 @@ function buildCommands() {
     {k:'Replay Next', d:'move timeline forward', run:() => { replayLive = false; replayIdx = replayIdx + 1; applyReplay(); }},
     {k:'Dump State', d:'persist snapshot to disk', run:() => dumpState()},
     {k:'Reload State', d:'load snapshot from disk', run:() => loadState()},
+    {k:'Load Previous Snapshot', d:'load earlier state snapshot', run:() => loadPreviousSnapshot()},
     {k:'Domain: Legal', d:'activate legal reasoning pack', run:async () => {
       const r = await fetch('/api/domain', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain:'legal'})}).then(x => x.json());
       addMsg('coggy', r.ok ? `domain → ${r.domain} (${r.name})` : `domain activation failed: ${r.error || '?'}`);
@@ -1800,6 +1904,12 @@ function buildCommands() {
       addMsg('coggy', r.ok ? `domain → ${r.domain} (${r.name})` : `domain activation failed: ${r.error || '?'}`);
       refresh();
     }},
+    {k:'Integrations: Catalog', d:'list feeds/prediction/legal/dashboard hooks', run:async () => {
+      const r = await fetch('/api/integrations/catalog').then(x => x.json());
+      const names = (r.projects || []).map(p => `${p.id} [${p.status}]`);
+      addMsg('coggy', names.length ? names.join('\n') : 'no integration projects defined');
+    }},
+    {k:'IBID: Ingest Corpus', d:'seed legal corpus into atomspace', run:() => ingestIbidCorpus()},
     {k:'Retry Next Model', d:'switch model and resend input', run:() => retryWithNextModel(inp.value || 'retry this request')}
   ];
 }
@@ -1809,9 +1919,20 @@ function renderCommandList(filter='') {
   if (!list) return;
   const q = (filter || '').trim().toLowerCase();
   commandItems = buildCommands().filter(c => !q || c.k.toLowerCase().includes(q) || c.d.toLowerCase().includes(q));
+  commandSel = 0;
   list.innerHTML = commandItems.map((c, i) =>
     `<div class=\"cmd-item ${i===0 ? 'active' : ''}\" data-cmd-idx=\"${i}\"><span class=\"k\">${escHtml(c.k)}</span><span class=\"d\">${escHtml(c.d)}</span></div>`
   ).join('');
+}
+
+function setCommandSelection(idx) {
+  const n = commandItems.length;
+  if (!n) return;
+  commandSel = ((idx % n) + n) % n;
+  const rows = Array.from(($('cmd-list') && $('cmd-list').querySelectorAll('.cmd-item')) || []);
+  rows.forEach((r, i) => r.classList.toggle('active', i === commandSel));
+  const row = rows[commandSel];
+  if (row) row.scrollIntoView({block:'nearest'});
 }
 
 function openCommandPalette() {
@@ -1880,6 +2001,7 @@ if ($('act-expand-all')) $('act-expand-all').addEventListener('click', () => exp
 if ($('act-reset-layout')) $('act-reset-layout').addEventListener('click', () => resetLayout());
 if ($('act-dump')) $('act-dump').addEventListener('click', () => dumpState());
 if ($('act-load')) $('act-load').addEventListener('click', () => loadState());
+if ($('ibid-ingest')) $('ibid-ingest').addEventListener('click', () => ingestIbidCorpus());
 if ($('timeline')) $('timeline').addEventListener('input', e => {
   replayLive = false;
   replayIdx = parseInt(e.target.value || '0', 10);
@@ -1906,9 +2028,19 @@ $('help-modal').addEventListener('click', e => { if (e.target.id === 'help-modal
 $('cmd-modal').addEventListener('click', e => { if (e.target.id === 'cmd-modal') closeCommandPalette(); });
 $('cmd-input').addEventListener('input', e => renderCommandList(e.target.value || ''));
 $('cmd-input').addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    setCommandSelection(commandSel + 1);
+    return;
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    setCommandSelection(commandSel - 1);
+    return;
+  }
   if (e.key === 'Enter') {
-    const first = $('cmd-list') && $('cmd-list').querySelector('.cmd-item');
-    if (first) first.click();
+    const row = $('cmd-list') && $('cmd-list').querySelector(`.cmd-item[data-cmd-idx=\"${commandSel}\"]`);
+    if (row) row.click();
   }
 });
 $('cmd-list').addEventListener('click', e => {
@@ -1918,6 +2050,12 @@ $('cmd-list').addEventListener('click', e => {
   const c = commandItems[idx];
   if (c && typeof c.run === 'function') c.run();
   closeCommandPalette();
+});
+$('cmd-list').addEventListener('mousemove', e => {
+  const row = e.target.closest('.cmd-item');
+  if (!row) return;
+  const idx = parseInt(row.getAttribute('data-cmd-idx') || '-1', 10);
+  if (idx >= 0) setCommandSelection(idx);
 });
 $('timeline-val').addEventListener('click', () => { replayLive = true; applyReplay(); });
 $('froth').addEventListener('pointerdown', e => {
@@ -1991,14 +2129,17 @@ fetch('/api/boot', {method:'POST'})
     refresh();
     refreshOpenRouterStatus(true);
     refreshModelLedger(true);
+    refreshIbidStatus();
   })
   .catch(e => addMsg('coggy', '⚠ boot failed: ' + e.message));
 refresh();
 refreshOpenRouterStatus(true);
 refreshModelLedger(true);
+refreshIbidStatus();
 setInterval(updateTraceAges, 4000);
 setInterval(() => refreshOpenRouterStatus(false), 60000);
 setInterval(() => refreshModelLedger(false), 15000);
+setInterval(() => refreshIbidStatus(), 20000);
 </script>
 </body>
 </html>")
@@ -2020,6 +2161,8 @@ setInterval(() => refreshModelLedger(false), 15000);
     (let [result (repl/process-turn! msg)]
       (try
         (repl/dump-state!)
+        (when (zero? (mod (max 1 (:turn result)) 3))
+          (repl/dump-state-versioned!))
         (catch Exception e
           (log! (str "snapshot dump failed: " (.getMessage e)))))
       (log! (str "→ turn " (:turn result)
@@ -2066,10 +2209,16 @@ setInterval(() => refreshModelLedger(false), 15000);
       (json-response stats))))
 
 (defn handle-dump-state []
-  (json-response (repl/dump-state!)))
+  (json-response (repl/dump-state-versioned!)))
 
 (defn handle-load-state []
   (json-response (repl/load-state!)))
+
+(defn handle-load-latest-state []
+  (json-response (repl/load-latest-snapshot!)))
+
+(defn handle-list-snapshots []
+  (json-response {:snapshots (repl/list-snapshots)}))
 
 (defn handle-model [body]
   (if-let [m (:model body)]
@@ -2083,6 +2232,43 @@ setInterval(() => refreshModelLedger(false), 15000);
     (json-response (repl/activate-domain! d))
     (json-response {:ok false :error "missing domain"} :status 400)))
 
+(defn handle-ibid-status []
+  (json-response (ibid/status)))
+
+(defn handle-ibid-ingest [body]
+  (let [p (:path body)
+        out (ibid/ingest-corpus! (repl/space) (repl/bank) p)]
+    (json-response out :status (if (:ok out) 200 400))))
+
+(defn handle-integration-catalog []
+  (json-response
+   {:projects
+    [{:id "metaculus-middleware"
+      :kind "predictions"
+      :status "stubbed"
+      :hook "/api/domain forecast"
+      :note "time-bounded claims + calibration traces"}
+     {:id "ibid-legal"
+      :kind "legal reasoning"
+      :status "seeded"
+      :hook "/api/ibid/ingest"
+      :note "IRAC + citation-chain + adversarial counterarguments"}
+     {:id "authority-feeds"
+      :kind "feeds/corpora"
+      :status "planned"
+      :hook "resources/ibid/legal-corpus.edn"
+      :note "court and regulator record mirrors"}
+     {:id "hott-knowledge-layers"
+      :kind "formal methods"
+      :status "planned"
+      :hook "/api/domain formal"
+      :note "type-theoretic fragments as context partitions"}
+     {:id "ops-dashboard"
+      :kind "dashboards"
+      :status "active"
+      :hook "/api/openrouter/models + /api/metrics"
+      :note "latency/quota/budget and grounding health"}]}))
+
 (defn handler [{:keys [uri request-method body]}]
   (try
     (case [request-method uri]
@@ -2093,18 +2279,35 @@ setInterval(() => refreshModelLedger(false), 15000);
       [:get "/api/state"] (handle-state)
       [:get "/api/state/dump"] (handle-dump-state)
       [:get "/api/state/load"] (handle-load-state)
+      [:get "/api/state/snapshots"] (handle-list-snapshots)
       [:get "/api/logs"]  (json-response (:logs @server-state))
       [:get "/api/metrics"] (handle-metrics)
       [:get "/api/openrouter/status"] (json-response (llm/doctor :json? false :silent? true))
       [:get "/api/openrouter/models"] (json-response (llm/model-health-report))
+      [:get "/api/ibid/status"] (handle-ibid-status)
+      [:get "/api/integrations/catalog"] (handle-integration-catalog)
 
       [:post "/api/chat"] (let [body (json/parse-string (slurp body) true)]
                             (handle-chat body))
       [:post "/api/boot"] (handle-boot)
+      [:post "/api/state/dump"] (let [body (json/parse-string (slurp body) true)
+                                      mode (str/lower-case (str (or (:mode body) "versioned")))]
+                                  (json-response (if (= mode "rolling")
+                                                   (repl/dump-state!)
+                                                   (repl/dump-state-versioned!))))
+      [:post "/api/state/load"] (let [body (json/parse-string (slurp body) true)
+                                      p (:path body)
+                                      latest? (true? (:latest body))]
+                                  (json-response (cond
+                                                   (seq (str p)) (repl/load-state! p)
+                                                   latest? (repl/load-latest-snapshot!)
+                                                   :else (repl/load-state!))))
       [:post "/api/model"] (let [body (json/parse-string (slurp body) true)]
                              (handle-model body))
       [:post "/api/domain"] (let [body (json/parse-string (slurp body) true)]
                               (handle-domain body))
+      [:post "/api/ibid/ingest"] (let [body (json/parse-string (slurp body) true)]
+                                   (handle-ibid-ingest body))
 
       [:options "/api/chat"] {:status 200
                               :headers {"Access-Control-Allow-Origin" "*"

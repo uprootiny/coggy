@@ -69,6 +69,13 @@
     result))
 
 (def default-snapshot-path "state/session.edn")
+(def default-snapshot-dir "state/snapshots")
+
+(defn snapshot-stamp []
+  (str (System/currentTimeMillis)))
+
+(defn snapshot-version-path []
+  (str default-snapshot-dir "/session-" (snapshot-stamp) ".edn"))
 
 (defn snapshot-state
   "Collect a persistable runtime snapshot."
@@ -113,6 +120,15 @@
     (spit p (pr-str snap))
     {:ok true :path p :bytes (count (pr-str snap))}))
 
+(defn dump-state-versioned!
+  "Write both the rolling snapshot and a versioned snapshot."
+  []
+  (let [latest (dump-state! default-snapshot-path)
+        versioned (dump-state! (snapshot-version-path))]
+    {:ok (and (:ok latest) (:ok versioned))
+     :latest latest
+     :versioned versioned}))
+
 (defn load-state!
   "Load snapshot from disk (EDN) into runtime."
   [& [path]]
@@ -123,6 +139,30 @@
             out (restore-state! snap)]
         (assoc out :path p))
       {:ok false :error (str "snapshot not found: " p)})))
+
+(defn list-snapshots
+  "List available versioned snapshots in descending recency."
+  []
+  (let [dir (io/file default-snapshot-dir)]
+    (if (.exists dir)
+      (->> (.listFiles dir)
+           (filter #(.isFile %))
+           (filter #(str/ends-with? (.getName %) ".edn"))
+           (map (fn [f]
+                  {:path (.getPath f)
+                   :name (.getName f)
+                   :bytes (.length f)
+                   :modified (.lastModified f)}))
+           (sort-by :modified >)
+           vec)
+      [])))
+
+(defn load-latest-snapshot!
+  "Load most recent versioned snapshot."
+  []
+  (if-let [snap (first (list-snapshots))]
+    (load-state! (:path snap))
+    {:ok false :error "no snapshots found"}))
 
 ;; =============================================================================
 ;; System Prompt — Ontological Seed
@@ -374,7 +414,10 @@ Your trace IS your thought. Make it honest about uncertainty.")
                     (println "  /domains  — list domain packs")
                     (println "  /domain   — activate domain pack")
                     (println "  /dump     — dump runtime snapshot")
+                    (println "  /dumpv    — dump versioned snapshot")
                     (println "  /load     — load runtime snapshot")
+                    (println "  /loadv    — load latest versioned snapshot")
+                    (println "  /snaps    — list versioned snapshots")
                     (println "  /atoms    — list all atoms")
                     (println "  /metrics  — semantic grounding health")
                     :continue)
@@ -424,11 +467,30 @@ Your trace IS your thought. Make it honest about uncertainty.")
                                   "  " (or (:path r) "")
                                   (when (:bytes r) (str " (" (:bytes r) " bytes)"))))
                     :continue))
+      "/dumpv" (do (let [r (dump-state-versioned!)
+                         v (:versioned r)]
+                     (println (str "  dumpv: " (if (:ok r) "ok" "fail")
+                                   "  " (or (:path v) "")))
+                     :continue))
       "/load" (do (let [r (load-state! arg)]
                     (if (:ok r)
                       (println (str "  load: ok  turn " (:turn r) "  atoms " (:atoms r) "  links " (:links r)))
                       (println (str "  load: fail  " (:error r))))
                     :continue))
+      "/loadv" (do (let [r (load-latest-snapshot!)]
+                     (if (:ok r)
+                       (println (str "  loadv: ok  turn " (:turn r) "  atoms " (:atoms r) "  links " (:links r)
+                                     "  from " (:path r)))
+                       (println (str "  loadv: fail  " (:error r))))
+                     :continue))
+      "/snaps" (do (let [ss (list-snapshots)]
+                     (if (seq ss)
+                       (do
+                         (println (str "  snapshots: " (count ss)))
+                         (doseq [s (take 10 ss)]
+                           (println (str "    " (:name s) "  " (:bytes s) " bytes"))))
+                       (println "  snapshots: none")))
+                   :continue)
       "/atoms"  (do (doseq [[k v] (:atoms @(space))]
                       (println (str "  " (name (:atom/type v)) " " (name k)
                                     " (stv " (format "%.1f" (get-in v [:atom/tv :tv/strength]))

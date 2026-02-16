@@ -1,0 +1,15 @@
+[{:id "smith-v-state-2021"
+  :title "Smith v. State"
+  :jurisdiction "us-state-x"
+  :issue "search-and-seizure"
+  :citations ["state-v-allen-2018" "us-v-jones-2012"]}
+ {:id "hartwell-v-metro-transit-2023"
+  :title "Hartwell v. Metro Transit"
+  :jurisdiction "us-state-y"
+  :issue "duty-of-care"
+  :citations ["palsgraf-v-long-island-1928" "doe-v-city-2019"]}
+ {:id "rivera-v-regulator-2024"
+  :title "Rivera v. Environmental Regulator"
+  :jurisdiction "us-federal"
+  :issue "administrative-deference"
+  :citations ["chevron-v-nrdc-1984" "west-virginia-v-epa-2022"]}]

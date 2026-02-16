@@ -46,6 +46,39 @@ Smoke tests (self-contained, includes temporary server + OpenRouter auth probe):
 ./coggy smoke
 ```
 
+## Snapshotting (Dump + Reload)
+
+- Auto: rolling snapshot each turn (`state/session.edn`)
+- Auto: versioned snapshot every 3 turns (`state/snapshots/session-<ts>.edn`)
+- UI: `dump state`, `reload state`, command palette entries
+- API:
+
+```bash
+curl -sS -X POST http://localhost:59683/api/state/dump -H 'content-type: application/json' -d '{"mode":"versioned"}' | jq
+curl -sS http://localhost:59683/api/state/snapshots | jq
+curl -sS -X POST http://localhost:59683/api/state/load -H 'content-type: application/json' -d '{"latest":true}' | jq
+```
+
+TUI commands:
+- `/dump`, `/dumpv`, `/load`, `/loadv`, `/snaps`
+
+## IBID Legal Feed Integration (Scaffold)
+
+- Default corpus: `resources/ibid/legal-corpus.edn`
+- UI panel: `IBID Feed` (ingest + run status)
+- API:
+
+```bash
+curl -sS http://localhost:59683/api/ibid/status | jq
+curl -sS -X POST http://localhost:59683/api/ibid/ingest -H 'content-type: application/json' -d '{}' | jq
+```
+
+Integrations catalog (feeds/predictions/legal/dashboard targets):
+
+```bash
+curl -sS http://localhost:59683/api/integrations/catalog | jq
+```
+
 ## Worked Example 1: Legal Reasoning Study Stub
 
 Goal: encode expert legal judgment as inspectable structures.
@@ -96,6 +129,8 @@ Important:
 - Semantic emphasis: `s`
 - Help overlay: `?`
 - Attention froth canvas: draggable bubbles with spring return
+- Command palette: `/` or `Ctrl+K` with arrow-key navigation
+- Timeline replay: scrubber + live/replay modes
 
 ## Deployment / Operations
 

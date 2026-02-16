@@ -54,7 +54,8 @@
                  (when (not= "0" (or (System/getenv "COGGY_AUTOLOAD_SNAPSHOT")
                                      (System/getProperty "COGGY_AUTOLOAD_SNAPSHOT")
                                      "1"))
-                   (let [r (repl/load-state!)]
+                   (let [r (let [rolling (repl/load-state!)]
+                             (if (:ok rolling) rolling (repl/load-latest-snapshot!)))]
                      (when (:ok r)
                        (println (str "snapshot loaded: " (:path r)
                                      " (turn " (:turn r) ", atoms " (:atoms r) ")")))))
@@ -81,7 +82,8 @@
         (when (not= "0" (or (System/getenv "COGGY_AUTOLOAD_SNAPSHOT")
                             (System/getProperty "COGGY_AUTOLOAD_SNAPSHOT")
                             "1"))
-          (let [r (repl/load-state!)]
+          (let [r (let [rolling (repl/load-state!)]
+                    (if (:ok rolling) rolling (repl/load-latest-snapshot!)))]
             (when (:ok r)
               (println (str "snapshot loaded: " (:path r)
                             " (turn " (:turn r) ", atoms " (:atoms r) ")")))))
