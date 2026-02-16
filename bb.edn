@@ -1,0 +1,22 @@
+{:paths ["src"]
+ :deps {org.babashka/http-client {:mvn/version "0.4.19"}
+        http-kit/http-kit {:mvn/version "2.8.0"}
+        cheshire/cheshire {:mvn/version "5.13.0"}}
+
+ :tasks
+ {:requires ([babashka.fs :as fs])
+
+  coggy {:doc "Start coggy REPL — ontological reasoning harness"
+         :task (shell "bb src/coggy/main.clj")}
+
+  boot {:doc "Run boot ritual only, print trace"
+        :task (shell "bb src/coggy/main.clj boot")}
+
+  serve {:doc "Start HTTP API server"
+         :task (shell "bb src/coggy/main.clj serve")}
+
+  test {:doc "Run tests"
+        :task (shell "bb test/coggy/atomspace_test.clj")}
+
+  doctor {:doc "Check OpenRouter connectivity and key"
+          :task (shell "bb src/coggy/main.clj doctor")}}}
