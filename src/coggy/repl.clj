@@ -8,6 +8,7 @@
             [coggy.attention :as att]
             [coggy.llm :as llm]
             [coggy.trace :as trace]
+            [coggy.semantic :as sem]
             [clojure.string :as str]))
 
 ;; =============================================================================
@@ -96,18 +97,19 @@ Your trace IS your thought. Make it honest about uncertainty.")
 ;; =============================================================================
 
 (defn process-turn!
-  "Process one turn of interaction. Returns response map."
+  "Process one turn of interaction. Returns response map.
+   Uses the semantic pipeline for grounding and vacuum detection."
   [user-input]
   (let [turn (inc (:turn @session))
         _ (swap! session assoc :turn turn)
 
-        ;; Extract concepts from user input
+        ;; Pre-extract concepts from user input (for seeding before LLM call)
         concepts (extract-concepts-from-text user-input)
         new-concepts (remove (:concepts-seen @session) concepts)
         space (space)
         bank (bank)
 
-        ;; Add new concepts to AtomSpace
+        ;; Seed new concepts into AtomSpace so LLM response can ground against them
         _ (doseq [c new-concepts]
             (as/add-atom! space (as/concept c))
             (att/stimulate! bank (keyword c) 10.0))
@@ -116,17 +118,13 @@ Your trace IS your thought. Make it honest about uncertainty.")
         _ (doseq [c (filter (:concepts-seen @session) concepts)]
             (att/stimulate! bank (keyword c) 5.0))
 
-        ;; Update attention
-        _ (att/decay! bank 0.1)
-        _ (att/update-focus! bank)
-
         ;; Track seen concepts
         _ (swap! session update :concepts-seen into concepts)
 
         ;; Build message history
         _ (swap! session update :history conj {:role "user" :content user-input})
 
-        ;; Call LLM
+        ;; Build augmented input with attentional focus
         focus (att/focus-atoms bank)
         focus-context (when (seq focus)
                         (str "\n[Current attentional focus: "
@@ -134,11 +132,17 @@ Your trace IS your thought. Make it honest about uncertainty.")
                              "]"))
         augmented-input (str user-input (or focus-context ""))
 
+        ;; Build system prompt — add semantic suffix if grounding is weak
+        effective-system (if (sem/should-add-suffix?)
+                           (str system-prompt sem/semantic-suffix)
+                           system-prompt)
+
+        ;; Call LLM
         resp (try
                (llm/converse
                  (conj (vec (take-last 10 (:history @session)))
                        {:role "user" :content augmented-input})
-                 :system system-prompt)
+                 :system effective-system)
                (catch Exception e
                  {:ok false :error (.getMessage e)}))
 
@@ -149,32 +153,62 @@ Your trace IS your thought. Make it honest about uncertainty.")
         ;; Record assistant response
         _ (swap! session update :history conj {:role "assistant" :content content})
 
-        ;; Build trace
-        trace-data {:parse (mapv #(as/concept %) new-concepts)
-                    :ground {:found (filterv (:concepts-seen @session) concepts)
-                             :missing (if (seq new-concepts)
-                                        (mapv str new-concepts)
-                                        [])}
+        ;; Run semantic pipeline — extract, ground, commit, rescue
+        sem-result (sem/process-semantic! space bank content)
+        sem-data (:semantic sem-result)
+        concept-ground (get-in sem-result [:grounding :concepts])
+        diagnosis (:diagnosis sem-result)
+        rescue (:rescue sem-result)
+
+        ;; Build trace from semantic pipeline + coggy-trace block
+        trace-data {:parse (if (seq (:concepts sem-data))
+                             (mapv #(as/concept %) (:concepts sem-data))
+                             (mapv #(as/concept %) new-concepts))
+                    :ground {:found (or (:grounded concept-ground) [])
+                             :missing (or (:novel concept-ground)
+                                         (if (seq new-concepts)
+                                           (mapv str new-concepts)
+                                           []))
+                             :rate (:rate concept-ground)}
                     :attend focus
-                    :infer (if-let [trace-block (extract-trace-block content)]
+                    :infer (cond
+                             ;; Semantic block had structured data
+                             (seq (:relations sem-data))
+                             (mapv (fn [r]
+                                     {:type :deduction
+                                      :conclusion (str (:type r) ": " (:a r) " → " (:b r))
+                                      :tv (as/stv 0.7 0.5)})
+                                   (:relations sem-data))
+
+                             ;; Coggy-trace block present
+                             (extract-trace-block content)
                              [{:type :deduction
-                               :conclusion (first (str/split-lines trace-block))
+                               :conclusion (first (str/split-lines (extract-trace-block content)))
                                :tv (as/stv 0.7 0.5)}]
+
+                             ;; Neither — gap
+                             :else
                              [{:type :gap
                                :conclusion "no structured trace from LLM"}])
-                    :reflect {:new-atoms (count new-concepts)
-                              :updated (- (count concepts) (count new-concepts))
+                    :reflect {:new-atoms (count (:novel concept-ground))
+                              :updated (count (:grounded concept-ground))
+                              :grounding-rate (:rate concept-ground)
                               :focus-concept (when (seq focus) (name (:key (first focus))))
+                              :diagnosis (when diagnosis (:type diagnosis))
+                              :rescue (when rescue (:action rescue))
                               :next-question nil}}
 
-        ;; Strip trace block from display content
-        display-content (str/replace content #"(?s)```coggy-trace\n.*?```" "")]
+        ;; Strip trace blocks from display content
+        display-content (-> content
+                            (str/replace #"(?s)```coggy-trace\n.*?```" "")
+                            (str/replace #"(?s)```semantic\n.*?```" ""))]
 
     {:content (str/trim display-content)
      :trace trace-data
      :turn turn
      :usage (:usage resp)
-     :stats (as/space-stats space)}))
+     :stats (as/space-stats space)
+     :semantic sem-result}))
 
 ;; =============================================================================
 ;; REPL Loop
@@ -205,6 +239,7 @@ Your trace IS your thought. Make it honest about uncertainty.")
                     (println "  /history  — conversation length")
                     (println "  /doctor   — check API connectivity")
                     (println "  /atoms    — list all atoms")
+                    (println "  /metrics  — semantic grounding health")
                     :continue)
       "/model"  (do (if arg
                       (do (llm/configure! {:model arg})
@@ -225,6 +260,15 @@ Your trace IS your thought. Make it honest about uncertainty.")
                                     " (stv " (format "%.1f" (get-in v [:atom/tv :tv/strength]))
                                     " " (format "%.1f" (get-in v [:atom/tv :tv/confidence])) ")")))
                     :continue)
+      "/metrics" (do (let [m (sem/metrics-summary)]
+                       (println (str "  turns: " (:turns m)))
+                       (println (str "  parse-rate: " (format "%.1f%%" (* 100 (:parse-rate m)))))
+                       (println (str "  avg-grounding: " (format "%.1f%%" (* 100 (:avg-grounding-rate m)))))
+                       (println (str "  avg-relations: " (format "%.1f%%" (* 100 (:avg-relation-rate m)))))
+                       (println (str "  vacuum-triggers: " (:vacuum-triggers m)))
+                       (when-let [f (:last-failure m)]
+                         (println (str "  last-failure: " (:type f) " at turn " (:turn f)))))
+                     :continue)
       (do (println (str "  unknown command: " cmd)) :continue))))
 
 (defn repl-loop []
@@ -241,11 +285,18 @@ Your trace IS your thought. Make it honest about uncertainty.")
           (recur))
 
         :else
-        (let [{:keys [content trace turn stats]} (process-turn! input)]
+        (let [{:keys [content trace turn stats semantic]} (process-turn! input)
+              grate (get-in semantic [:grounding :concepts :rate])]
           (println "")
           (println content)
           (println "")
           (trace/print-trace trace)
-          (println (str "  [turn " turn " | atoms " (:atoms stats) " | links " (:links stats) "]"))
+          (println (str "  [turn " turn
+                        " | atoms " (:atoms stats)
+                        " | links " (:links stats)
+                        (when grate (str " | ground " (format "%.0f%%" (* 100 grate))))
+                        (when-let [d (get-in trace [:reflect :diagnosis])]
+                          (str " | " (name d)))
+                        "]"))
           (println "")
           (recur))))))

@@ -18,7 +18,8 @@
             [coggy.llm :as llm]
             [coggy.boot :as boot]
             [coggy.repl :as repl]
-            [coggy.trace :as trace]))
+            [coggy.trace :as trace]
+            [coggy.semantic :as sem]))
 
 ;; =============================================================================
 ;; State
@@ -589,6 +590,7 @@ fetch('/api/boot', {method:'POST'}).then(r => r.json()).then(data => {
       [:get "/health"]   (json-response {:status "ok"})
       [:get "/api/state"] (handle-state)
       [:get "/api/logs"]  (json-response (:logs @server-state))
+      [:get "/api/metrics"] (json-response (sem/metrics-summary))
 
       [:post "/api/chat"] (let [body (json/parse-string (slurp body) true)]
                             (handle-chat body))

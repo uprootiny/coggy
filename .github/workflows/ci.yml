@@ -63,5 +63,22 @@ jobs:
                 (assert (= 200 (:status resp)) "state should return 200"))
               (let [resp (http/get "http://localhost:18421/" {:throw false})]
                 (assert (= 200 (:status resp)) "index should return 200"))
+              (let [resp (http/get "http://localhost:18421/api/metrics" {:throw false})]
+                (assert (= 200 (:status resp)) "metrics should return 200"))
               (stop-fn)
               (println "Web server smoke test OK")))'
+
+      - name: Smoke test semantic pipeline
+        run: |
+          bb -e '
+          (require (quote [coggy.atomspace :as as])
+                   (quote [coggy.attention :as att])
+                   (quote [coggy.semantic :as sem]))
+          (let [space (as/make-space)
+                bank (att/make-bank)
+                text "response\n```semantic\n{:concepts [\"alpha\" \"beta\"] :relations [{:type :inherits :a \"alpha\" :b \"beta\"}] :confidence 0.8}\n```"]
+            (let [result (sem/process-semantic! space bank text)]
+              (assert (some? (:semantic result)) "should extract semantic")
+              (assert (= 2 (count (get-in result [:semantic :concepts]))) "should have 2 concepts")
+              (assert (some? (as/get-atom space "alpha")) "alpha should be grounded")
+              (println (str "Semantic pipeline OK: " (get-in result [:metrics :turns]) " turns tracked"))))'

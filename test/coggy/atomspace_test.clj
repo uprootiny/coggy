@@ -8,6 +8,7 @@
             [coggy.boot :as boot]
             [coggy.llm :as llm]
             [coggy.repl :as repl]
+            [coggy.semantic :as sem]
             [clojure.string :as str]))
 
 ;; =============================================================================
@@ -395,6 +396,101 @@
             rendered (trace/render-trace trace-data)]
         (is (str/includes? rendered "reasoning") "trace should contain concepts")
         (is (str/includes? rendered "ATTEND") "trace should have attention")))))
+
+;; =============================================================================
+;; Semantic Module Tests
+;; =============================================================================
+
+(println "Testing coggy.semantic\n")
+
+(deftest extract-semantic-block-edn
+  (let [text "some response\n```semantic\n{:concepts [\"voice\" \"signal\"] :relations [{:type :inherits :a \"voice\" :b \"signal\"}] :confidence 0.7}\n```\nmore text"
+        result (sem/extract-semantic-block text)]
+    (is (some? result) "should extract semantic block")
+    (is (= ["voice" "signal"] (:concepts result)) "should have concepts")
+    (is (= 1 (count (:relations result))) "should have one relation")))
+
+(deftest extract-semantic-block-inline
+  (let [text "here is {:concepts [\"alpha\" \"beta\"] :relations []}"
+        result (sem/extract-semantic-block text)]
+    (is (some? result) "should extract inline semantic")
+    (is (= ["alpha" "beta"] (:concepts result)) "should parse concepts")))
+
+(deftest extract-semantic-block-missing
+  (let [result (sem/extract-semantic-block "no semantic block here")]
+    (is (nil? result) "should return nil for missing block")))
+
+(deftest normalize-concept-test
+  (is (= "voice" (sem/normalize-concept "Voice")) "should lowercase")
+  (is (= "signal" (sem/normalize-concept "  signals  ")) "should trim and singularize")
+  (is (= "hello-world" (sem/normalize-concept "hello-world!")) "should strip non-alphanum"))
+
+(deftest normalize-semantic-test
+  (let [raw {:concepts ["Voices" "Signals"]
+             :relations [{:type :inherits :a "Voices" :b "Signals"}]}
+        norm (sem/normalize-semantic raw)]
+    (is (= ["voice" "signal"] (:concepts norm)) "concepts should be normalized")
+    (is (= "voice" (get-in norm [:relations 0 :a])) "relation source normalized")
+    (is (= "signal" (get-in norm [:relations 0 :b])) "relation target normalized")))
+
+(deftest ground-concepts-empty-space
+  (let [space (as/make-space)
+        result (sem/ground-concepts space ["alpha" "beta"])]
+    (is (= 0.0 (:rate result)) "nothing should ground in empty space")
+    (is (= 2 (count (:novel result))) "all should be novel")))
+
+(deftest ground-concepts-with-atoms
+  (let [space (as/make-space)]
+    (as/add-atom! space (as/concept "alpha"))
+    (let [result (sem/ground-concepts space ["alpha" "beta"])]
+      (is (= 0.5 (:rate result)) "half should ground")
+      (is (= ["alpha"] (:grounded result)) "alpha should be grounded")
+      (is (= ["beta"] (:novel result)) "beta should be novel"))))
+
+(deftest diagnose-parser-miss
+  (let [bank (att/make-bank)
+        d (sem/diagnose-failure nil {:rate 0.0} {:rate 0.0} bank)]
+    (is (= :parser-miss (:type d)) "nil semantic = parser miss")))
+
+(deftest diagnose-grounding-vacuum
+  (let [bank (att/make-bank)
+        semantic {:concepts ["x" "y"]}
+        d (sem/diagnose-failure semantic {:rate 0.0} {:rate 0.0} bank)]
+    (is (= :grounding-vacuum (:type d)) "zero rate = vacuum")))
+
+(deftest diagnose-healthy
+  (let [bank (att/make-bank)
+        semantic {:concepts ["x"]}
+        d (sem/diagnose-failure semantic {:rate 0.5} {:rate 0.5} bank)]
+    (is (nil? d) "partial grounding = no diagnosis")))
+
+(deftest commit-semantics-adds-atoms
+  (let [space (as/make-space)
+        bank (att/make-bank)
+        semantic {:concepts ["foo" "bar"]
+                  :relations [{:type :inherits :a "foo" :b "bar"}]}
+        grounding {:grounded [] :novel ["foo" "bar"] :rate 0.0}]
+    (sem/commit-semantics! space bank semantic grounding)
+    (is (some? (as/get-atom space "foo")) "foo should be in space")
+    (is (some? (as/get-atom space "bar")) "bar should be in space")
+    (is (pos? (count (:links @space))) "should have links")))
+
+(deftest full-semantic-pipeline
+  (let [space (as/make-space)
+        bank (att/make-bank)
+        text "here is some response\n```semantic\n{:concepts [\"coggy\" \"reasoning\"] :relations [{:type :inherits :a \"coggy\" :b \"reasoning\"}] :confidence 0.8}\n```"
+        result (sem/process-semantic! space bank text)]
+    (is (some? (:semantic result)) "should have semantic data")
+    (is (= 2 (count (get-in result [:semantic :concepts]))) "should have 2 concepts")
+    (is (map? (:metrics result)) "should have metrics")
+    (is (some? (as/get-atom space "coggy")) "coggy should be in space")))
+
+(deftest metrics-summary-format
+  (let [m (sem/metrics-summary)]
+    (is (number? (:turns m)) "should have turns")
+    (is (number? (:parse-rate m)) "should have parse-rate")
+    (is (number? (:avg-grounding-rate m)) "should have avg-grounding-rate")
+    (is (number? (:vacuum-triggers m)) "should have vacuum-triggers")))
 
 ;; =============================================================================
 ;; Results
