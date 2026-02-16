@@ -555,6 +555,7 @@ body::after{
     <span class='pill' id='r-atoms'>atoms: <b>0</b></span>
     <span class='pill' id='r-ground'>ground: <b>—</b></span>
     <span class='pill' id='r-vacuum'>vacuum: <b>0</b></span>
+    <span class='pill' id='r-hyle'>hyle: <b>—</b></span>
     <span class='pill' id='r-delta'>delta: <b>—</b></span>
     <span class='spacer'></span>
     <span class='pill' id='r-parse'>parse: <b>—</b></span>
@@ -651,6 +652,7 @@ let prevTraceStats = null;
 let layerCollapse = {parse:false, ground:false, attend:false, infer:false, reflect:false};
 let orCache = {at: 0, data: null};
 let frothState = {nodes: [], map: {}, dragging: null, raf: null};
+let leftColPx = null;
 
 // ── Render helpers ──
 
@@ -720,6 +722,7 @@ function renderThoughtCanvas(stateR) {
   $('froth-legend').textContent = `turn ${turn} · ${active.length} active thoughts`;
 
   const W = 1000, H = 260;
+  const lanes = 6;
   if (!active.length) {
     el.innerHTML = `<text x='40' y='132' class='label'>no active thoughts yet</text>`;
     frothState.nodes = [];
@@ -736,7 +739,7 @@ function renderThoughtCanvas(stateR) {
     const x = 70 + ((W - 140) * (i / base)) + (rnd(seed, 5) - 0.5) * 70;
     const y = 30 + (H - 60) * ((lane + rnd(seed, 7) * 0.85) / lanes);
     const r = Math.max(22, Math.min(88, 20 + a.sti * 3.2));
-    const hu = Math.round((hashColor(a.k).match(/hsl\((\d+)/) || [0, 180])[1]);
+    const hu = Math.round((hashColor(a.k).match(/hsl\\((\\d+)/) || [0, 180])[1]);
     const fillCell = `hsla(${hu}, 78%, 58%, 0.16)`;
     const fillCore = `hsla(${hu}, 88%, 64%, 0.24)`;
     const t = ((turn * 19 + i * 31) % 1000) / 1000;
@@ -797,6 +800,27 @@ function animateFroth() {
     n.y += n.vy;
     if (Math.abs(n.vx) > 0.02 || Math.abs(n.vy) > 0.02 || Math.abs(n.baseX - n.x) > 0.6 || Math.abs(n.baseY - n.y) > 0.6) moving = true;
   });
+  for (let i = 0; i < frothState.nodes.length; i++) {
+    for (let j = i + 1; j < frothState.nodes.length; j++) {
+      const a = frothState.nodes[i], b = frothState.nodes[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy) || 0.001;
+      const minDist = (a.r + b.r) * 0.72;
+      if (dist < minDist) {
+        const overlap = (minDist - dist) * 0.5;
+        const nx = dx / dist, ny = dy / dist;
+        a.x -= nx * overlap; a.y -= ny * overlap;
+        b.x += nx * overlap; b.y += ny * overlap;
+        a.vx -= nx * 0.04; a.vy -= ny * 0.04;
+        b.vx += nx * 0.04; b.vy += ny * 0.04;
+        moving = true;
+      }
+    }
+  }
+  frothState.nodes.forEach(n => {
+    n.x = Math.max(30, Math.min(970, n.x));
+    n.y = Math.max(24, Math.min(236, n.y));
+  });
   drawFroth();
   if (moving || frothState.dragging) {
     frothState.raf = requestAnimationFrame(animateFroth);
@@ -806,6 +830,55 @@ function animateFroth() {
 }
 function kickFroth() {
   if (!frothState.raf) frothState.raf = requestAnimationFrame(animateFroth);
+}
+function applySplit() {
+  if (!hemi) return;
+  if (window.innerWidth <= 1100) {
+    hemi.style.gridTemplateColumns = '1fr';
+    return;
+  }
+  const w = hemi.getBoundingClientRect().width;
+  const left = Math.max(420, Math.min(w - 330, leftColPx || Math.round(w * 0.65)));
+  hemi.style.gridTemplateColumns = `${left}px 10px minmax(300px,1fr)`;
+}
+function resetLayout() {
+  leftColPx = null;
+  traceDepth = 3; showGhost = true; showSemantic = true;
+  setCtl('ctl-depth-1', true); setCtl('ctl-depth-2', true); setCtl('ctl-depth-3', true);
+  setCtl('ctl-ghost', true); setCtl('ctl-semantic', true);
+  layerCollapse = {parse:false, ground:false, attend:false, infer:false, reflect:false};
+  saveLayerCollapse(); saveUiPrefs();
+  applySplit(); applyTraceFilters(); updateTraceAges();
+}
+function focusFailures() {
+  showGhost = false;
+  setCtl('ctl-ghost', false);
+  applyTraceFilters();
+  conv.querySelectorAll('.trace').forEach(t => {
+    const hasFail = t.querySelector('.badge.fail-parse, .badge.fail-vacuum');
+    t.style.display = hasFail ? '' : 'none';
+  });
+  saveUiPrefs();
+}
+function inferOnly() {
+  layerCollapse = {parse:true, ground:true, attend:true, infer:false, reflect:false};
+  saveLayerCollapse();
+  conv.querySelectorAll('.trace-layer[data-layer-key]').forEach(el => {
+    const key = el.getAttribute('data-layer-key');
+    const on = isLayerCollapsed(key);
+    el.classList.toggle('collapsed', on);
+    const car = el.querySelector('.car');
+    if (car) car.textContent = on ? '▸' : '▾';
+  });
+}
+function expandAll() {
+  layerCollapse = {parse:false, ground:false, attend:false, infer:false, reflect:false};
+  saveLayerCollapse();
+  conv.querySelectorAll('.trace-layer[data-layer-key]').forEach(el => {
+    el.classList.remove('collapsed');
+    const car = el.querySelector('.car');
+    if (car) car.textContent = '▾';
+  });
 }
 function orLevel(data) {
   if (!data) return 'warn';
@@ -869,11 +942,12 @@ function loadUiPrefs() {
     if (typeof p.traceDepth === 'number') traceDepth = Math.max(1, Math.min(3, p.traceDepth));
     if (typeof p.showGhost === 'boolean') showGhost = p.showGhost;
     if (typeof p.showSemantic === 'boolean') showSemantic = p.showSemantic;
+    if (typeof p.leftColPx === 'number') leftColPx = p.leftColPx;
   } catch (_) {}
 }
 function saveUiPrefs() {
   try {
-    localStorage.setItem('coggy.ui.prefs', JSON.stringify({traceDepth, showGhost, showSemantic}));
+    localStorage.setItem('coggy.ui.prefs', JSON.stringify({traceDepth, showGhost, showSemantic, leftColPx}));
   } catch (_) {}
 }
 function isLayerCollapsed(key) {
@@ -1130,6 +1204,11 @@ async function refresh() {
     renderGeometry(stateR, metricsR);
     renderThoughtCanvas(stateR);
     refreshOpenRouterStatus(false);
+    if (stateR.hyle) {
+      const up = stateR.hyle.status === 'up';
+      $('r-hyle').innerHTML = `hyle: <b>${up ? 'up' : 'down'}</b>`;
+      $('r-hyle').className = 'pill ' + (up ? 'ok' : 'warn');
+    }
     // ribbon metrics
     if (metricsR) {
       const gr = metricsR['avg-grounding-rate'] || 0;
@@ -1300,12 +1379,24 @@ setInterval(() => refreshOpenRouterStatus(false), 60000);
 
 (defn handle-state []
   (let [space @(repl/space)
-        bank @(repl/bank)]
+        bank @(repl/bank)
+        hyle-port (or (System/getenv "HYLE_PORT")
+                      (System/getProperty "HYLE_PORT")
+                      "8420")
+        hyle-ok? (try
+                   (let [conn ^java.net.HttpURLConnection (.openConnection (java.net.URL. (str "http://localhost:" hyle-port "/health")))]
+                     (.setRequestMethod conn "GET")
+                     (.setConnectTimeout conn 1200)
+                     (.setReadTimeout conn 1200)
+                     (= 200 (.getResponseCode conn)))
+                   (catch Exception _ false))]
     (json-response {:atoms (:atoms space)
                     :links (count (:links space))
                     :attention (:attention bank)
                     :focus (:focus bank)
-                    :model (:model @llm/config)})))
+                    :model (:model @llm/config)
+                    :hyle {:port hyle-port
+                           :status (if hyle-ok? "up" "down")}})))
 
 (defn handle-boot []
   (let [space (repl/space)
@@ -1348,5 +1439,5 @@ setInterval(() => refreshOpenRouterStatus(false), 60000);
 (defn start! [port]
   (println (str "coggy web UI on http://localhost:" port))
   (log! (str "server starting on port " port))
-  (srv/run-server handler {:port port})
+  (srv/run-server handler {:ip "0.0.0.0" :port port})
   @(promise))

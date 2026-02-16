@@ -57,6 +57,27 @@
     ;; Fallback: nil (parser-miss)
     nil))
 
+(defn fallback-semantic-from-text
+  "Heuristic fallback when no semantic block is emitted.
+   Extracts lightweight concepts so the pipeline stays productive."
+  [text]
+  (let [tokens (->> (str/split (str/lower-case (or text "")) #"\s+")
+                    (map #(str/replace % #"[^a-z0-9-]" ""))
+                    (remove #(or (< (count %) 3)
+                                 (#{"the" "and" "for" "with" "this" "that" "have" "from"
+                                    "were" "been" "into" "your" "about" "what" "when" "where"
+                                    "which" "then" "will" "would" "could" "should" "must"} %)))
+                    distinct
+                    (take 8)
+                    vec)]
+    (when (seq tokens)
+      {:concepts tokens
+       :relations (->> (partition 2 1 tokens)
+                       (take 4)
+                       (mapv (fn [[a b]] {:type :resembles :a a :b b})))
+       :intent {:type :fallback :target "parser-recovery"}
+       :confidence 0.35})))
+
 ;; =============================================================================
 ;; Normalization
 ;; =============================================================================
@@ -312,7 +333,8 @@ Never emit an empty structure. Guess if you must.")
   "Full semantic processing pipeline for an LLM response.
    Returns {:semantic :grounding :diagnosis :rescue :metrics}."
   [space bank llm-response]
-  (let [raw (extract-semantic-block llm-response)
+  (let [raw (or (extract-semantic-block llm-response)
+                (fallback-semantic-from-text llm-response))
         semantic (normalize-semantic raw)
         concept-ground (ground-concepts space (or (:concepts semantic) []))
         relation-ground (ground-relations space (or (:relations semantic) []))

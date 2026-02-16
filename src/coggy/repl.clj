@@ -26,6 +26,36 @@
 (defn space [] (:space @session))
 (defn bank [] (:bank @session))
 
+(defn http-get-json
+  "Small helper for local status probes without extra deps."
+  [url]
+  (try
+    (let [conn ^java.net.HttpURLConnection (.openConnection (java.net.URL. url))]
+      (.setRequestMethod conn "GET")
+      (.setConnectTimeout conn 1500)
+      (.setReadTimeout conn 1500)
+      (let [code (.getResponseCode conn)]
+        {:ok (= 200 code) :status code}))
+    (catch Exception e
+      {:ok false :error (.getMessage e)})))
+
+(defn connect-status
+  "OpenRouter + Hyle connectivity summary."
+  []
+  (let [or (llm/doctor :json? false :silent? true)
+        hyle-port (or (System/getenv "HYLE_PORT")
+                      (System/getProperty "HYLE_PORT")
+                      "8420")
+        hyle (http-get-json (str "http://localhost:" hyle-port "/health"))]
+    {:openrouter {:ok (get-in or [:auth :ok])
+                  :status (get-in or [:auth :status])
+                  :hint (get-in or [:auth :hint])
+                  :model (:configured-model or)}
+     :hyle {:ok (:ok hyle)
+            :status (:status hyle)
+            :port hyle-port
+            :error (:error hyle)}}))
+
 ;; =============================================================================
 ;; System Prompt — Ontological Seed
 ;; =============================================================================
@@ -144,11 +174,17 @@ Your trace IS your thought. Make it honest about uncertainty.")
                        {:role "user" :content augmented-input})
                  :system effective-system)
                (catch Exception e
-                 {:ok false :error (.getMessage e)}))
+                 (let [d (ex-data e)]
+                   {:ok false
+                    :error (.getMessage e)
+                    :hint (:hint d)
+                    :status (:status d)})))
 
         content (if (:ok resp)
                   (:content resp)
-                  (str "⚠ LLM error: " (:error resp)))
+                  (str "⚠ LLM error: " (:error resp)
+                       (when (:status resp) (str " [status " (:status resp) "]"))
+                       (when (:hint resp) (str "\nfix: " (:hint resp)))))
 
         ;; Record assistant response
         _ (swap! session update :history conj {:role "assistant" :content content})
@@ -238,6 +274,7 @@ Your trace IS your thought. Make it honest about uncertainty.")
                     (println "  /focus    — current attentional focus")
                     (println "  /history  — conversation length")
                     (println "  /doctor   — check API connectivity")
+                    (println "  /connect  — OpenRouter + Hyle integration status")
                     (println "  /atoms    — list all atoms")
                     (println "  /metrics  — semantic grounding health")
                     :continue)
@@ -255,6 +292,20 @@ Your trace IS your thought. Make it honest about uncertainty.")
       "/history" (do (println (str "  " (count (:history @session)) " messages"))
                      :continue)
       "/doctor" (do (llm/doctor) :continue)
+      "/connect" (do (let [s (connect-status)]
+                       (println "  OpenRouter:")
+                       (println (str "    ok: " (get-in s [:openrouter :ok])
+                                     "  status: " (get-in s [:openrouter :status])
+                                     "  model: " (get-in s [:openrouter :model])))
+                       (when-let [h (get-in s [:openrouter :hint])]
+                         (println (str "    hint: " h)))
+                       (println "  Hyle:")
+                       (println (str "    ok: " (get-in s [:hyle :ok])
+                                     "  status: " (get-in s [:hyle :status])
+                                     "  port: " (get-in s [:hyle :port])))
+                       (when-let [e (get-in s [:hyle :error])]
+                         (println (str "    error: " e))))
+                     :continue)
       "/atoms"  (do (doseq [[k v] (:atoms @(space))]
                       (println (str "  " (name (:atom/type v)) " " (name k)
                                     " (stv " (format "%.1f" (get-in v [:atom/tv :tv/strength]))
