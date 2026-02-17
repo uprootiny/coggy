@@ -367,6 +367,15 @@
      :reason "ECAN funds depleted"
      :recovery :reset-attention}
 
+    ;; Contradiction: high grounding rate but semantic confidence contradicts
+    ;; existing atoms (grounded concepts with divergent confidence)
+    (and (> (:rate concept-grounding) 0.5)
+         (some? (:confidence semantic))
+         (< (:confidence semantic) 0.3))
+    {:type :contradiction-blocked
+     :reason "low semantic confidence despite grounded concepts — possible contradiction"
+     :recovery :reconcile-tv}
+
     :else nil))
 
 (defn vacuum-detected?
@@ -403,6 +412,9 @@
 
     :add-semantic-suffix
     {:rescued false :action "will add semantic prompt suffix next turn"}
+
+    :reconcile-tv
+    {:rescued false :action "contradiction detected — needs human arbitration"}
 
     {:rescued false :action "unknown recovery path"}))
 
