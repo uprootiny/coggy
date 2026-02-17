@@ -17,7 +17,7 @@
             [coggy.repl :as repl]
             [coggy.trace :as trace]
             [coggy.semantic :as sem]
-))
+            [coggy.bench :as bench]))
 
 ;; =============================================================================
 ;; State
@@ -2287,6 +2287,10 @@ setInterval(() => refreshIbidStatus(), 20000);
       [:get "/api/openrouter/models"] (json-response (llm/model-health-report))
       [:get "/api/ibid/status"] (handle-ibid-status)
       [:get "/api/integrations/catalog"] (handle-integration-catalog)
+      [:get "/api/smoke"]     (let [checks (bench/smoke-check (repl/space) (repl/bank))]
+                                (json-response (bench/smoke-summary checks)))
+      [:get "/api/haywire"]   (json-response (bench/detect-haywire))
+      [:get "/api/evidence"]  (json-response (bench/recent-evidence 20))
 
       [:post "/api/chat"] (let [body (json/parse-string (slurp body) true)]
                             (handle-chat body))

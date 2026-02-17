@@ -10,6 +10,7 @@
             [coggy.llm :as llm]
             [coggy.trace :as trace]
             [coggy.semantic :as sem]
+            [coggy.bench :as bench]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -405,6 +406,8 @@ RULES:
                     (println "  /snaps    — list versioned snapshots")
                     (println "  /atoms    — list all atoms")
                     (println "  /metrics  — semantic grounding health")
+                    (println "  /smoke    — run smoke check battery")
+                    (println "  /haywire  — detect repeated no-op cycles")
                     :continue)
       "/model"  (do (if arg
                       (do (llm/configure! {:model arg})
@@ -489,6 +492,24 @@ RULES:
                        (println (str "  vacuum-triggers: " (:vacuum-triggers m)))
                        (when-let [f (:last-failure m)]
                          (println (str "  last-failure: " (:type f) " at turn " (:turn f)))))
+                     :continue)
+      "/smoke"   (do (let [checks (bench/smoke-check (space) (bank))
+                           summary (bench/smoke-summary checks)]
+                       (println (str "  smoke: " (:passed summary) "/" (:total summary)
+                                     " (score " (format "%.0f%%" (* 100 (:score summary))) ")"))
+                       (doseq [b (:blockers summary)]
+                         (println (str "  BLOCKER: " (name (:check b))))))
+                     :continue)
+      "/trace-quality" (do (let [hist (:history @session)]
+                             (if (empty? hist)
+                               (println "  no turns yet")
+                               (println "  trace quality scoring available after turns")))
+                           :continue)
+      "/haywire" (do (let [h (bench/detect-haywire)]
+                       (if (:haywire? h)
+                         (println (str "  HAYWIRE: " (:reason h)
+                                       " (" (:repeated-actions h) " repeated)"))
+                         (println "  no haywire detected")))
                      :continue)
       (do (println (str "  unknown command: " cmd)) :continue))))
 
