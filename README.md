@@ -105,6 +105,8 @@ COGGY_PORT=8421 cargo run --bin web
 
 It serves the Coggy canvas at `http://localhost:8421` (the live host uses `http://173.212.203.211:8421`) and exposes health, focus, feed, and trace endpoints described in [`docs/api.md`](docs/api.md). Use `scripts/run-web.sh` to build and launch the server inside tmux or another process manager.
 
+For multi-port demos, use `scripts/run-multi-web.sh` so you can bring up 8421, 8431, 8451, etc., simultaneously.
+
 ## Live demonstration
 
 For a quick demo that proves the landing page, API, and focus traces work together, run:
