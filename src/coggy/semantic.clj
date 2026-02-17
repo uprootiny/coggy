@@ -94,14 +94,23 @@
 ;; Normalization
 ;; =============================================================================
 
+(def no-strip-s
+  "Words where trailing 's' is not a plural marker."
+  #{"bus" "analysis" "glass" "basis" "process" "focus" "status"
+    "consensus" "atlas" "alias" "bias" "chaos" "cosmos" "ethos"
+    "logos" "pathos" "thesis" "crisis" "diagnosis" "hypothesis"
+    "emphasis" "synthesis" "corpus" "apparatus" "nexus"})
+
 (defn normalize-concept
-  "Canonicalize a concept string: lowercase, singular, trimmed."
+  "Canonicalize a concept string: lowercase, strip non-alphanum, naive singular."
   [s]
-  (-> (str s)
-      str/trim
-      str/lower-case
-      (str/replace #"[^a-z0-9-]" "")
-      (str/replace #"s$" "")))  ;; naive singular — good enough
+  (let [cleaned (-> (str s)
+                    str/trim
+                    str/lower-case
+                    (str/replace #"[^a-z0-9-]" ""))]
+    (if (contains? no-strip-s cleaned)
+      cleaned
+      (str/replace cleaned #"s$" ""))))
 
 (def concept-aliases
   {"inference" "reasoning"
