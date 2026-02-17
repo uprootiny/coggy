@@ -3,5 +3,6 @@
 .nrepl-port
 target/
 state/
+!state/tmux/
 *.swp
 *~
