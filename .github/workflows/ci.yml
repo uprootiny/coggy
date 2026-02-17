@@ -54,6 +54,7 @@ jobs:
             (reset! repl/session
                     {:space space :bank bank :history []
                      :turn 0 :concepts-seen #{}
+                     :active-domain nil
                      :started-at (System/currentTimeMillis)})
             (let [stop-fn (srv/run-server web/handler {:port 18421})]
               (Thread/sleep 500)
