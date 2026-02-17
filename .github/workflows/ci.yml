@@ -22,7 +22,10 @@ jobs:
         run: bb --version
 
       - name: Run tests
-        run: bb test/coggy/atomspace_test.clj
+        run: |
+          bb test/coggy/atomspace_test.clj
+          bb test/coggy/domain_test.clj
+          bb test/coggy/bench_test.clj
 
       - name: Smoke test boot
         run: |
