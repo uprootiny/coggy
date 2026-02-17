@@ -18,6 +18,8 @@ Coggy’s architecture is a living contract between deployment rigor, UX nuance,
 4. If memory climbs, run `./scripts/oom-tripwire.sh` or collect metrics via cron; threshold hits append `logs/oom-tripwire.log`.
 5. Update Caddy (`/etc/caddy/Caddyfile`) and reload so `umbra.hyperstitious.art` routes to whichever port you want to serve and the tmux status line references the health endpoint for that port.
 
+> Tip: keep one port dedicated to CI/test (e.g., 8451) and another to the public proxy (8421) so you can turf smoke outputs without touching the production canvas.
+
 ## 3. Coherence guardrails
 
 - **Breadcrumbs** capture every action (`2026-02-16-coggy-deploy.md`, `2026-02-16-multi-deploy.md`, etc.) to keep context/action/outcome/follow-up visible.
