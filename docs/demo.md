@@ -1,0 +1,29 @@
+# Live Demo guide
+
+Use this guide to prove the Coggy Canvas, API surface, and UX artifacts are live and interacting. It also produces a reusable log you can reference in breadcrumbs or share with Claude.
+
+## Prerequisites
+
+- Ensure at least one Coggy web server is running (e.g., `COGGY_PORT=8431 ./scripts/run-web.sh`).
+- Install `jq` (the script uses it to pretty-print the JSON responses).
+
+## Run the demo script
+
+```
+PORT=8431 TRACE_INPUT="penguin is-a bird" ./scripts/demo-run.sh
+```
+
+That script:
+
+1. Hits `/api/health` so you see the current atom count/turn on that port.
+2. Runs `/api/trace` with the provided natural language input (`TRACE_INPUT`) and logs the PARSE→GROUND→ATTEND→INFER trace plus focus snapshot.
+3. Retrieves `/api/focus` so you can see the attention values that animate the landing page badges.
+4. Writes everything into `logs/demo-8431.log` for record keeping.
+
+Review the log to see the sample JSON responses you can feed into dashboards or share with Claude.
+
+## Optional follow-ups
+
+- Drop the JSON into a breadcrumb or prompt template (see `breadcrumbs/` and `prompts/`) with the context/action/outcome/follow-up pattern.
+- Update `TRACE_INPUT` to experiment with another domain (legal reasoning, adversarial example, etc.) and track the changes through `/api/feed`.
+- Use the same script across other ports (8421, 8451) to ensure the multi-port deployment is consistent.
