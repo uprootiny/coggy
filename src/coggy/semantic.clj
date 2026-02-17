@@ -63,32 +63,40 @@
     ;; Fallback: nil (parser-miss)
     nil))
 
+(def fallback-stopwords
+  #{"the" "and" "for" "with" "this" "that" "have" "from"
+    "were" "been" "into" "your" "about" "what" "when" "where"
+    "which" "then" "will" "would" "could" "should" "must"
+    "also" "just" "like" "very" "more" "some" "each" "only"
+    "parse" "ground" "attend" "infer" "reflect"
+    "coggy-trace" "semantic" "stv" "concepts" "relations"})
+
 (defn fallback-semantic-from-text
   "Heuristic fallback when no semantic block is emitted.
-   Extracts lightweight concepts so the pipeline stays productive."
+   Extracts lightweight concepts and creates star-topology relations
+   from the most salient token to the rest."
   [text]
   (let [clean (-> (str/lower-case (or text ""))
-                  ;; Remove fenced trace/semantic blocks to avoid self-parsing boilerplate.
                   (str/replace #"(?s)```.*?```" " ")
                   (str/replace #"`" " "))
         tokens (->> (str/split clean #"\s+")
                     (map #(str/replace % #"[^a-z0-9-]" ""))
                     (remove #(or (< (count %) 3)
-                                 (#{"the" "and" "for" "with" "this" "that" "have" "from"
-                                    "were" "been" "into" "your" "about" "what" "when" "where"
-                                    "which" "then" "will" "would" "could" "should" "must"
-                                    "parse" "ground" "attend" "infer" "reflect"
-                                    "coggy-trace" "semantic" "stv"} %)))
+                                 (contains? fallback-stopwords %)))
                     distinct
                     (take 8)
                     vec)]
     (when (seq tokens)
-      {:concepts tokens
-       :relations (->> (partition 2 1 tokens)
-                       (take 4)
-                       (mapv (fn [[a b]] {:type :resembles :a a :b b})))
-       :intent {:type :fallback :target "parser-recovery"}
-       :confidence 0.35})))
+      (let [hub (first tokens)
+            spokes (rest tokens)]
+        {:concepts tokens
+         :relations (into []
+                          (take 4
+                                (map (fn [spoke]
+                                       {:type :resembles :a hub :b spoke})
+                                     spokes)))
+         :intent {:type :fallback :target "parser-recovery"}
+         :confidence 0.35}))))
 
 ;; =============================================================================
 ;; Normalization
