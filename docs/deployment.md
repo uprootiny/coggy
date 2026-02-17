@@ -67,3 +67,5 @@ This keeps the canvases up-to-date, signals stateful health, and feeds downstrea
 Use `scripts/run-multi-web.sh` to launch Coggy web on several uncontested high ports at once (default ports: 8421, 8431, 8451). It watches for existing listeners, writes logs to `logs/web-<port>.log`, and can be invoked with `PORT_LIST="8421 8431 8451 8461" ./scripts/run-multi-web.sh`.
 
 Keep memory in check by running `scripts/oom-tripwire.sh` regularly (scheduled via `cron`, `systemd-timer`, or manually) to log RSS usage for every `target/release/web` process and flag anything over `THRESHOLD_MB` (default 250 MB). The log `logs/oom-tripwire.log` records each probe so you can correlate spikes with deployment events.
+
+Add a `tail -F logs/oom-tripwire.log` tmux pane or alert to be notified when the tripwire fires.
