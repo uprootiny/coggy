@@ -117,6 +117,10 @@ PORT=8431 TRACE_INPUT="penguin is-a bird" ./scripts/demo-run.sh
 
 The script hits `/api/health`, `/api/trace`, and `/api/focus`, pretty-prints the JSON using `jq`, and writes a log at `logs/demo-8431.log`. See [`docs/demo.md`](docs/demo.md) for the step-by-step narrative, next actions, and how to fold the log into breadcrumbs or Claude prompts.
 
+## Benchmarks & smoke panels
+
+`docs/benchmarks.md` collects contemporary reasoning/deployment challenges plus how to document them; run `PORT=8451 ./scripts/run-benchmarks.sh` after schema/ontology changes so you generate `logs/benchmarks-*.log` artifacts you can materialize in breadcrumbs or Claude prompts.
+
 ## Deployment & CI/CD
 
 The `.github/workflows/ci.yml` pipeline checks formatting, lints, runs tests, and compiles release binaries for both `coggy` and `web`. The landing page and binaries are uploaded as an artifact named `coggy-releases`, which you can fetch when deploying onto remote hosts.
