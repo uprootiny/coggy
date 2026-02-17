@@ -169,52 +169,27 @@
 ;; =============================================================================
 
 (def system-prompt
-  "You are Coggy, a historically coherent symbolic-cognitive simulator.
-Model a specific architecture lineage (Cyc-style context partitions + OpenCog-style AtomSpace + attention allocation + inference routing), not vague AI roleplay.
+  "You are Coggy — an ontological reasoning harness.
 
-Treat the interaction surface like a modal synthesizer:
-- separate layers and sublayers (parse, ground, attend, infer, reflect)
-- explicit controls and state transitions
-- inspectable mechanics over theatrical prose
-
-Your job is to translate natural language into structured ontology operations that can be inspected turn by turn.
-Prefer concrete symbols, links, contexts, confidence, and failure modes.
-
-Your response MUST include a reasoning trace in this format at the end:
+RESPONSE FORMAT (strict):
+1. First: your human-readable answer (1-4 sentences, concise)
+2. Then: a blank line
+3. Then: your trace block in EXACTLY this format:
 
 ```coggy-trace
-PARSE: [list concepts and predicates extracted from the input]
-GROUND: [what you found in prior context vs what's new]
-ATTEND: [what concepts have high attention right now]
-INFER: [any deductions, with truth values as (stv S C)]
-REFLECT: [summary + suggested next question]
+PARSE: concept1, concept2, concept3
+GROUND: found: X, Y | new: Z
+ATTEND: focus1 (high), focus2 (fading)
+INFER: X is-a Y (stv 0.8 0.7), Z causes W (stv 0.6 0.4)
+REFLECT: summary | next: suggested question
 ```
 
-Keep output compact to prevent parser overload:
-- max 7 concepts in PARSE
-- max 5 relations in INFER
-- max 2 short lines per phase
-
-Use OpenCog-style atom types:
-- ConceptNode: things, ideas, entities
-- PredicateNode: relations, properties, verbs
-- InheritanceLink: X is-a Y
-- EvaluationLink: predicate(args)
-- ImplicationLink: if X then Y
-- SimilarityLink: X resembles Y
-
-Truth values (stv strength confidence):
-- (stv 1.0 0.9) = certain and well-grounded
-- (stv 0.8 0.3) = believe it, thin evidence
-- (stv 0.1 0.9) = confident it's false
-
-Design constraints:
-- Be specific, internally consistent, and historically plausible.
-- Show what changed this turn (delta-first), not only full state.
-- If uncertain, expose uncertainty as typed gaps, never handwave.
-
-Be concise. Think in structures, not paragraphs.
-Your trace IS your thought. Make it honest about uncertainty.")
+RULES:
+- Answer FIRST, trace LAST. Never mix them.
+- Keep trace compact: 1 line per phase, max 7 concepts.
+- Use OpenCog atom types: ConceptNode, PredicateNode, InheritanceLink, EvaluationLink, ImplicationLink, SimilarityLink.
+- Truth values: (stv strength confidence) where 1.0=certain, 0.0=false.
+- Be concise. Structures over paragraphs. Honest about uncertainty.")
 
 ;; =============================================================================
 ;; Concept Extraction (from LLM trace output)
@@ -363,10 +338,20 @@ Your trace IS your thought. Make it honest about uncertainty.")
                               :rescue (when rescue (:action rescue))
                               :next-question nil}}
 
-        ;; Strip trace blocks from display content
+        ;; Strip trace blocks from display content (multiple formats LLMs emit)
         display-content (-> content
-                            (str/replace #"(?s)```coggy-trace\n.*?```" "")
-                            (str/replace #"(?s)```semantic\n.*?```" ""))]
+                            ;; Fenced blocks
+                            (str/replace #"(?s)```coggy-trace[\s\S]*?```" "")
+                            (str/replace #"(?s)```semantic[\s\S]*?```" "")
+                            (str/replace #"(?s)```json[\s\S]*?```" "")
+                            ;; Unfenced coggy-trace (everything after it)
+                            (str/replace #"(?s)coggy-trace\s*\n?PARSE:[\s\S]*" "")
+                            ;; Standalone trace lines at start of line
+                            (str/replace #"(?m)^(PARSE|GROUND|ATTEND|INFER|REFLECT)\s*:.*$" "")
+                            ;; Inline PARSE: after answer text (grab from PARSE: to end)
+                            (str/replace #"(?s)\nPARSE\s*:[\s\S]*" "")
+                            ;; Cleanup: collapse multiple blank lines
+                            (str/replace #"\n{3,}" "\n\n"))]
 
     {:content (str/trim display-content)
      :trace trace-data
