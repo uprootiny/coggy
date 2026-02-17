@@ -2315,7 +2315,7 @@ setInterval(() => refreshIbidStatus(), 20000);
                                         "Access-Control-Allow-Methods" "POST"
                                         "Access-Control-Allow-Headers" "Content-Type"}}
 
-      {:status 404 :body "not found"}))
+      {:status 404 :body "not found"})
     (catch Exception e
       (log! (str "ERROR: " (.getMessage e)))
       (json-response {:error (.getMessage e)} :status 500))))
