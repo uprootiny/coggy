@@ -15,8 +15,11 @@
   serve {:doc "Start HTTP API server"
          :task (shell "bb src/coggy/main.clj serve")}
 
-  test {:doc "Run tests"
-        :task (shell "bb test/coggy/atomspace_test.clj")}
+  test {:doc "Run all tests"
+        :task (do (shell "bb test/coggy/atomspace_test.clj")
+                  (shell "bb test/coggy/domain_test.clj")
+                  (when (fs/exists? "test/coggy/bench_test.clj")
+                    (shell "bb test/coggy/bench_test.clj")))}
 
   doctor {:doc "Check OpenRouter connectivity and key"
           :task (shell "bb src/coggy/main.clj doctor")}}}
