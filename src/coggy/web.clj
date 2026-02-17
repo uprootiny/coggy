@@ -17,7 +17,7 @@
             [coggy.repl :as repl]
             [coggy.trace :as trace]
             [coggy.semantic :as sem]
-            [coggy.tmux-dash :as tmux]))
+))
 
 ;; =============================================================================
 ;; State
@@ -2315,9 +2315,7 @@ setInterval(() => refreshIbidStatus(), 20000);
                                         "Access-Control-Allow-Methods" "POST"
                                         "Access-Control-Allow-Headers" "Content-Type"}}
 
-      ;; Tmux dashboard routes (delegated)
-      (or (tmux/dash-handler {:uri uri :request-method request-method :body body})
-          {:status 404 :body "not found"}))
+      {:status 404 :body "not found"}))
     (catch Exception e
       (log! (str "ERROR: " (.getMessage e)))
       (json-response {:error (.getMessage e)} :status 500))))
