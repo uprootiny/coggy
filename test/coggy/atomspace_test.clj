@@ -497,6 +497,150 @@
     (is (number? (:vacuum-triggers m)) "should have vacuum-triggers")))
 
 ;; =============================================================================
+;; TV Revision Tests
+;; =============================================================================
+
+(println "Testing tv-revise\n")
+
+(deftest tv-revise-basic
+  (let [tv1 (as/stv 1.0 0.8)
+        tv2 (as/stv 0.0 0.2)
+        merged (as/tv-revise tv1 tv2)]
+    (is (> (:tv/strength merged) 0.5) "high-confidence observation should dominate")
+    (is (> (:tv/confidence merged) 0.8) "merged confidence should exceed either input")))
+
+(deftest tv-revise-equal-confidence
+  (let [tv1 (as/stv 1.0 0.5)
+        tv2 (as/stv 0.0 0.5)
+        merged (as/tv-revise tv1 tv2)]
+    (is (< (Math/abs (- (:tv/strength merged) 0.5)) 0.01)
+        "equal confidence should average strength")))
+
+(deftest tv-revise-zero-confidence
+  (let [tv1 (as/stv 0.5 0.0)
+        tv2 (as/stv 0.5 0.0)
+        merged (as/tv-revise tv1 tv2)]
+    (is (= (:tv/type merged) :simple) "zero confidence should return default")))
+
+(deftest tv-revise-on-readd
+  (let [space (as/make-space)]
+    (as/add-atom! space (as/concept "x" (as/stv 0.6 0.3)))
+    (as/add-atom! space (as/concept "x" (as/stv 0.9 0.7)))
+    (let [atom (as/get-atom space "x")]
+      (is (> (:tv/confidence (:atom/tv atom)) 0.3)
+          "re-adding should increase confidence")
+      (is (> (:tv/strength (:atom/tv atom)) 0.6)
+          "higher-confidence observation should pull strength up"))))
+
+;; =============================================================================
+;; Spread Activation Tests
+;; =============================================================================
+
+(println "Testing spread-activation\n")
+
+(deftest spread-activation-through-inheritance
+  (let [bank (att/make-bank)]
+    (att/stimulate! bank :parent 20.0)
+    (let [link (as/inheritance (as/concept "child") (as/concept "parent") (as/stv 0.8 0.5))]
+      (att/spread-activation! bank [link] :parent 0.5)
+      (is (pos? (get-in @bank [:attention :child :av/sti] 0.0))
+          "STI should spread to child via inheritance link"))))
+
+(deftest spread-activation-through-similarity
+  (let [bank (att/make-bank)]
+    (att/stimulate! bank :alpha 20.0)
+    (let [link (as/similarity (as/concept "alpha") (as/concept "beta") (as/stv 0.7 0.4))]
+      (att/spread-activation! bank [link] :alpha 0.5)
+      (is (pos? (get-in @bank [:attention :beta :av/sti] 0.0))
+          "STI should spread to beta via similarity link"))))
+
+(deftest spread-activation-through-implication
+  (let [bank (att/make-bank)]
+    (att/stimulate! bank :cause 20.0)
+    (let [link (as/implication (as/concept "cause") (as/concept "effect") (as/stv 0.6 0.3))]
+      (att/spread-activation! bank [link] :cause 0.5)
+      (is (pos? (get-in @bank [:attention :effect :av/sti] 0.0))
+          "STI should spread to effect via implication link"))))
+
+(deftest spread-activation-through-evaluation
+  (let [bank (att/make-bank)]
+    (att/stimulate! bank :likes 20.0)
+    (let [link (as/evaluation (as/predicate "likes") (as/concept "alice") (as/concept "bob"))]
+      (att/spread-activation! bank [link] :likes 0.5)
+      (is (pos? (get-in @bank [:attention :alice :av/sti] 0.0))
+          "STI should spread to args via evaluation link"))))
+
+(deftest link-source-key-extraction
+  (is (= :child (att/link-source-key (as/inheritance (as/concept "child") (as/concept "parent"))))
+      "should extract source from inheritance")
+  (is (= :alpha (att/link-source-key (as/similarity (as/concept "alpha") (as/concept "beta"))))
+      "should extract first from similarity")
+  (is (= :cause (att/link-source-key (as/implication (as/concept "cause") (as/concept "effect"))))
+      "should extract antecedent from implication"))
+
+;; =============================================================================
+;; Rescue Strategy Tests
+;; =============================================================================
+
+(println "Testing rescue strategies\n")
+
+(deftest rescue-grounding-vacuum
+  (let [space (as/make-space)
+        bank (att/make-bank)
+        failure (sem/err :grounding-vacuum "no concepts matched")]
+    ;; Need 2 consecutive zero-rate turns for vacuum detection
+    (swap! sem/metrics assoc :grounding-rates [0.0 0.0])
+    (let [result (sem/trigger-rescue! space bank failure)]
+      (is (sem/ok? result) "vacuum rescue should succeed")
+      (is (some? (as/get-atom space "thing")) "should seed ontology footholds"))))
+
+(deftest rescue-budget-exhausted
+  (let [space (as/make-space)
+        bank (att/make-bank)
+        failure (sem/err :budget-exhausted "funds depleted")]
+    (att/stimulate! bank :x 80.0)  ;; spend funds
+    (let [funds-before (:sti-funds @bank)
+          result (sem/trigger-rescue! space bank failure)]
+      (is (sem/ok? result) "budget rescue should succeed")
+      (is (> (:sti-funds @bank) funds-before) "decay should reclaim funds"))))
+
+(deftest rescue-parser-miss
+  (let [space (as/make-space)
+        bank (att/make-bank)
+        failure (sem/err :parser-miss "no semantic block")]
+    (let [result (sem/trigger-rescue! space bank failure)]
+      (is (sem/ok? result) "parser-miss rescue should succeed")
+      (is (string? (:result/val result)) "should return action description"))))
+
+(deftest rescue-ontology-miss
+  (let [space (as/make-space)
+        bank (att/make-bank)]
+    ;; Seed some atoms and stimulate so focus exists
+    (as/add-atom! space (as/concept "dog" (as/stv 0.8 0.5)))
+    (as/add-atom! space (as/concept "cat" (as/stv 0.8 0.5)))
+    (as/add-atom! space (as/concept "animal" (as/stv 0.9 0.6)))
+    (as/add-link! space (as/inheritance (as/concept "dog") (as/concept "animal")))
+    (as/add-link! space (as/inheritance (as/concept "cat") (as/concept "animal")))
+    (att/stimulate! bank :dog 15.0)
+    (att/stimulate! bank :cat 15.0)
+    (att/update-focus! bank)
+    (let [failure (sem/err :ontology-miss "concepts grounded but no relations")
+          result (sem/trigger-rescue! space bank failure)]
+      (is (sem/ok? result) "ontology-miss rescue should succeed")
+      (is (string? (:result/val result)) "should describe inferred links"))))
+
+(deftest rescue-contradiction-blocked
+  (let [space (as/make-space)
+        bank (att/make-bank)]
+    (as/add-atom! space (as/concept "truth" (as/stv 1.0 0.8)))
+    (att/stimulate! bank :truth 15.0)
+    (att/update-focus! bank)
+    (let [failure (sem/err :contradiction-blocked "low confidence")
+          result (sem/trigger-rescue! space bank failure)]
+      (is (sem/ok? result) "contradiction rescue should succeed")
+      (is (string? (:result/val result)) "should describe revision"))))
+
+;; =============================================================================
 ;; Property Tests — hand-rolled generative invariant checking
 ;; =============================================================================
 
