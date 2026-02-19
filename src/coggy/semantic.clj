@@ -261,11 +261,11 @@
 
     ;; Spread activation through committed links
     (doseq [r (:relations semantic)]
-      (let [src-key (keyword (canonical-concept (:a r)))]
-        (let [related-links (as/query-links space
-                              (fn [l] (= (:atom/name (:link/source l)) src-key)))]
-          (when (seq related-links)
-            (att/spread-activation! bank related-links src-key 0.3)))))
+      (let [src-key (keyword (canonical-concept (:a r)))
+            related-links (as/query-links space
+                            (fn [l] (= (att/link-source-key l) src-key)))]
+        (when (seq related-links)
+          (att/spread-activation! bank related-links src-key 0.3))))
 
     ;; Decay and update focus
     (att/decay! bank decay-rate)

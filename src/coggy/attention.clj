@@ -109,17 +109,41 @@
      :total (+ distributed (:sti-funds b))
      :initial (:initial-sti-funds attention-params)}))
 
+(defn link-atom-keys
+  "Extract all atom keys referenced by a link, regardless of link type."
+  [link]
+  (->> [(:link/source link) (:link/target link)
+        (:link/first link) (:link/second link)
+        (:link/antecedent link) (:link/consequent link)
+        (:link/predicate link) (:link/context link) (:link/atom link)]
+       (concat (:link/args link))
+       (keep :atom/name)
+       distinct))
+
+(defn link-source-key
+  "Extract the source atom key from a link, regardless of link type."
+  [link]
+  (or (:atom/name (:link/source link))
+      (:atom/name (:link/first link))
+      (:atom/name (:link/antecedent link))
+      (:atom/name (:link/context link))
+      (:atom/name (:link/predicate link))))
+
 (defn spread-activation!
-  "Spread STI from source to connected atoms via links."
+  "Spread STI from source to connected atoms via links.
+   STI flows to all atoms in the link except the source itself."
   [bank links source-key fraction]
   (let [b @bank
         source-sti (get-in b [:attention source-key :av/sti] 0.0)
-        amount (* source-sti fraction)
-        targets (count links)]
-    (when (pos? targets)
-      (let [per-target (/ amount targets)]
-        (doseq [link links]
-          (let [target (or (:link/target link)
-                          (first (:link/args link)))]
-            (when-let [tk (:atom/name target)]
-              (stimulate! bank tk per-target))))))))
+        amount (* source-sti fraction)]
+    (when (pos? (count links))
+      (let [all-targets (->> links
+                             (mapcat link-atom-keys)
+                             (remove #{source-key})
+                             distinct
+                             vec)
+            per-target (when (pos? (count all-targets))
+                         (/ amount (count all-targets)))]
+        (when per-target
+          (doseq [tk all-targets]
+            (stimulate! bank tk per-target)))))))
