@@ -21,7 +21,7 @@ case "${cmd}" in
   repl)
     exec bb "${ROOT_DIR}/src/coggy/main.clj" "$@"
     ;;
-  serve|boot|doctor)
+  serve|boot|doctor|connect)
     exec bb "${ROOT_DIR}/src/coggy/main.clj" "${cmd}" "$@"
     ;;
   test)
@@ -35,7 +35,7 @@ case "${cmd}" in
     ;;
   help|-h|--help)
     cat <<'EOF'
-Usage: coggy [repl|serve|boot|doctor|test|up|start|stop|restart|status|fleet|chat|smoke|logs|cockpit|bench|ctl]
+Usage: coggy [repl|serve|boot|doctor|connect|test|up|start|stop|restart|status|fleet|chat|smoke|logs|cockpit|bench|ctl]
 
 Examples:
   coggy
