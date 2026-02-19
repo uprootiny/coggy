@@ -406,19 +406,20 @@
 (deftest extract-semantic-block-edn
   (let [text "some response\n```semantic\n{:concepts [\"voice\" \"signal\"] :relations [{:type :inherits :a \"voice\" :b \"signal\"}] :confidence 0.7}\n```\nmore text"
         result (sem/extract-semantic-block text)]
-    (is (some? result) "should extract semantic block")
-    (is (= ["voice" "signal"] (:concepts result)) "should have concepts")
-    (is (= 1 (count (:relations result))) "should have one relation")))
+    (is (sem/ok? result) "should extract semantic block")
+    (is (= ["voice" "signal"] (:concepts (:result/val result))) "should have concepts")
+    (is (= 1 (count (:relations (:result/val result)))) "should have one relation")))
 
 (deftest extract-semantic-block-inline
   (let [text "here is {:concepts [\"alpha\" \"beta\"] :relations []}"
         result (sem/extract-semantic-block text)]
-    (is (some? result) "should extract inline semantic")
-    (is (= ["alpha" "beta"] (:concepts result)) "should parse concepts")))
+    (is (sem/ok? result) "should extract inline semantic")
+    (is (= ["alpha" "beta"] (:concepts (:result/val result))) "should parse concepts")))
 
 (deftest extract-semantic-block-missing
   (let [result (sem/extract-semantic-block "no semantic block here")]
-    (is (nil? result) "should return nil for missing block")))
+    (is (not (sem/ok? result)) "should return err for missing block")
+    (is (= :parser-miss (:result/type result)) "should be parser-miss type")))
 
 (deftest normalize-concept-test
   (is (= "voice" (sem/normalize-concept "Voice")) "should lowercase")
@@ -450,19 +451,22 @@
 (deftest diagnose-parser-miss
   (let [bank (att/make-bank)
         d (sem/diagnose-failure nil {:rate 0.0} {:rate 0.0} bank)]
-    (is (= :parser-miss (:type d)) "nil semantic = parser miss")))
+    (is (not (sem/ok? d)) "nil semantic = failure")
+    (is (= :parser-miss (:result/type d)) "nil semantic = parser miss")))
 
 (deftest diagnose-grounding-vacuum
   (let [bank (att/make-bank)
         semantic {:concepts ["x" "y"]}
         d (sem/diagnose-failure semantic {:rate 0.0} {:rate 0.0} bank)]
-    (is (= :grounding-vacuum (:type d)) "zero rate = vacuum")))
+    (is (not (sem/ok? d)) "zero rate = failure")
+    (is (= :grounding-vacuum (:result/type d)) "zero rate = vacuum")))
 
 (deftest diagnose-healthy
   (let [bank (att/make-bank)
         semantic {:concepts ["x"]}
         d (sem/diagnose-failure semantic {:rate 0.5} {:rate 0.5} bank)]
-    (is (nil? d) "partial grounding = no diagnosis")))
+    (is (sem/ok? d) "partial grounding = healthy result")
+    (is (= :healthy (:type (:result/val d))) "should be :healthy type")))
 
 (deftest commit-semantics-adds-atoms
   (let [space (as/make-space)
@@ -491,6 +495,140 @@
     (is (number? (:parse-rate m)) "should have parse-rate")
     (is (number? (:avg-grounding-rate m)) "should have avg-grounding-rate")
     (is (number? (:vacuum-triggers m)) "should have vacuum-triggers")))
+
+;; =============================================================================
+;; Property Tests — hand-rolled generative invariant checking
+;; =============================================================================
+
+(println "Testing properties (generative)\n")
+
+(defn rand-double [lo hi] (+ lo (* (- hi lo) (Math/random))))
+(defn rand-int* [lo hi] (+ lo (int (* (- hi lo) (Math/random)))))
+
+(defn check-property
+  "Run f n times. f returns true if property holds."
+  [n f]
+  (let [failures (atom [])]
+    (dotimes [i n]
+      (let [ok? (try (f) (catch Exception e
+                           (swap! failures conj {:trial i :error (.getMessage e)})
+                           false))]
+        (when-not ok?
+          (swap! failures conj {:trial i}))))
+    (let [fs @failures]
+      {:ok (empty? fs) :trials n :failures (count fs)})))
+
+(deftest property-fund-conservation
+  ;; After stimulate + decay cycles, total (distributed + remaining) should be bounded
+  (let [result (check-property 100
+                 (fn []
+                   (let [bank (att/make-bank)
+                         n (rand-int* 1 8)]
+                     ;; Random stimulations
+                     (dotimes [_ n]
+                       (att/stimulate! bank (keyword (str "a" (rand-int* 0 20)))
+                                       (rand-double 0.5 15.0)))
+                     ;; Random decays
+                     (dotimes [_ (rand-int* 0 3)]
+                       (att/decay! bank (rand-double 0.05 0.3)))
+                     ;; Check: distributed STI should be bounded
+                     (let [bal (att/fund-balance bank)]
+                       ;; Distributed can't exceed what was taken from funds
+                       ;; total = distributed + remaining; remaining started at 100
+                       ;; Due to STI clamping, distributed may be less than spent
+                       (and (>= (:remaining bal) (- 0 500.0))  ;; funds can go negative
+                            (<= (:distributed bal) (* 200.0 20)))))))]  ;; bounded by sti-max × atom count
+    (is (:ok result) (str "fund conservation: " (:failures result) "/" (:trials result) " failures"))))
+
+(deftest property-sti-saturation
+  ;; No atom should exceed sti-max
+  (let [result (check-property 100
+                 (fn []
+                   (let [bank (att/make-bank)]
+                     (dotimes [_ 20]
+                       (att/stimulate! bank :test-atom (rand-double 1.0 50.0)))
+                     (let [sti (get-in @bank [:attention :test-atom :av/sti])]
+                       (<= sti (:sti-max att/attention-params))))))]
+    (is (:ok result) (str "STI saturation: " (:failures result) "/" (:trials result) " failures"))))
+
+(deftest property-index-integrity
+  ;; After adding N atoms (some duplicates), index count should match atom count per type
+  (let [result (check-property 100
+                 (fn []
+                   (let [space (as/make-space)
+                         names (repeatedly (rand-int* 3 15)
+                                           #(str "item-" (rand-int* 0 8)))]
+                     (doseq [n names]
+                       (as/add-atom! space (as/concept n)))
+                     ;; Index count for ConceptNode should match actual distinct atom count
+                     (let [idx-count (count (get-in @space [:indices :ConceptNode]))
+                           atom-count (count (filterv #(= :ConceptNode (:atom/type %))
+                                                      (vals (:atoms @space))))]
+                       (= idx-count atom-count)))))]
+    (is (:ok result) (str "index integrity: " (:failures result) "/" (:trials result) " failures"))))
+
+(deftest property-grounding-monotonicity
+  ;; Adding atoms to a space can only increase (or maintain) the grounding rate
+  (let [result (check-property 50
+                 (fn []
+                   (let [space (as/make-space)
+                         concepts ["alpha" "beta" "gamma" "delta"]
+                         ;; Add some atoms
+                         _ (doseq [c (take (rand-int* 0 3) concepts)]
+                             (as/add-atom! space (as/concept c)))
+                         rate-before (:rate (sem/ground-concepts space concepts))
+                         ;; Add more atoms
+                         _ (doseq [c concepts]
+                             (as/add-atom! space (as/concept c)))
+                         rate-after (:rate (sem/ground-concepts space concepts))]
+                     (>= rate-after rate-before))))]
+    (is (:ok result) (str "grounding monotonicity: " (:failures result) "/" (:trials result) " failures"))))
+
+(deftest property-normalization-idempotence
+  ;; normalize(normalize(x)) == normalize(x)
+  (let [result (check-property 50
+                 (fn []
+                   (let [concepts (repeatedly (rand-int* 1 5)
+                                              #(str (rand-nth ["Alpha" "BETA" "gamma" "Deltas"
+                                                               "analyses" "bus" "focus" "cats"])))
+                         raw {:concepts concepts
+                              :relations [{:type :inherits
+                                           :a (first concepts)
+                                           :b (or (second concepts) (first concepts))}]
+                              :confidence (rand-double 0.1 0.9)}
+                         once (sem/normalize-semantic raw)
+                         twice (sem/normalize-semantic once)]
+                     (= once twice))))]
+    (is (:ok result) (str "normalization idempotence: " (:failures result) "/" (:trials result) " failures"))))
+
+(deftest property-focus-size-configurable
+  ;; Custom af-size should be respected
+  (let [result (check-property 20
+                 (fn []
+                   (let [sz (rand-int* 2 6)
+                         bank (att/make-bank {:af-size sz})]
+                     (dotimes [i 10]
+                       (att/stimulate! bank (keyword (str "x" i)) (double i)))
+                     (att/update-focus! bank)
+                     (= sz (count (:focus @bank))))))]
+    (is (:ok result) (str "configurable focus: " (:failures result) "/" (:trials result) " failures"))))
+
+(deftest property-result-types-total
+  ;; diagnose-failure always returns a result (never nil)
+  (let [result (check-property 50
+                 (fn []
+                   (let [bank (att/make-bank)
+                         semantic (rand-nth [nil
+                                            {:concepts []}
+                                            {:concepts ["x"]}
+                                            {:concepts ["x" "y"] :relations [{:type :inherits :a "x" :b "y"}]}
+                                            {:concepts ["x"] :confidence 0.1}])
+                         cg {:rate (rand-double 0.0 1.0)}
+                         rg {:rate (rand-double 0.0 1.0)}
+                         d (sem/diagnose-failure semantic cg rg bank)]
+                     ;; Must always be a map with :result/ok key
+                     (contains? d :result/ok))))]
+    (is (:ok result) (str "result type totality: " (:failures result) "/" (:trials result) " failures"))))
 
 ;; =============================================================================
 ;; Results
