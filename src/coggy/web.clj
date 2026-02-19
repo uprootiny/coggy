@@ -1036,7 +1036,8 @@ function renderMetrics(m, models) {
   const exhaustions = m['budget-exhaustions'] != null ? m['budget-exhaustions'] : 0;
   const turns      = m['turns'] != null ? m['turns'] : 0;
   const stiFunds   = m['sti-funds'] != null ? m['sti-funds'] : null;
-  const ltiFunds   = m['lti-funds'] != null ? m['lti-funds'] : null;
+  const stiMax     = m['sti-max'] != null ? m['sti-max'] : null;
+  const fundBal    = m['fund-balance'] || null;
 
   // Update ribbon grounding rate
   if (groundRate != null) {
@@ -1055,8 +1056,8 @@ function renderMetrics(m, models) {
   html += metricCard('vacuums', fmt(vacuums), vacuums > 0 ? 'warn' : '', null);
   html += metricCard('exhaustions', fmt(exhaustions), exhaustions > 0 ? 'bad' : '', null);
 
-  if (stiFunds != null) html += metricCard('STI funds', fmt(Math.round(stiFunds)), '', null);
-  if (ltiFunds != null) html += metricCard('LTI funds', fmt(Math.round(ltiFunds)), '', null);
+  if (stiFunds != null) html += metricCard('STI funds', fmt(Math.round(stiFunds)), stiFunds < -80 ? 'bad' : stiFunds < 0 ? 'warn' : '', null);
+  if (fundBal) html += metricCard('fund total', fmt(Math.round(fundBal.total)), '', null);
 
   html += '</div>';
 
@@ -1211,6 +1212,452 @@ init();
 </html>
 ")
 ;; =============================================================================
+;; Canvas — Voronoi Attention Space
+;; =============================================================================
+
+(def canvas-html
+  "<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+<meta charset=\"utf-8\">
+<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">
+<title>coggy canvas — attention space</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #06080c;
+  --surface: #0c1018;
+  --border: #1a2235;
+  --text: #c9d1d9;
+  --dim: #4a5568;
+  --faint: #2a3444;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --amber: #d29922;
+  --red: #f85149;
+  --teal: #2dd4bf;
+  --violet: #a78bfa;
+  --rose: #fb7185;
+  --font: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); overflow: hidden; }
+
+#app { display: grid; grid-template-rows: 32px 1fr 180px; height: 100vh; }
+
+/* Ribbon */
+#ribbon {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 12px; background: var(--surface);
+  border-bottom: 1px solid var(--border); font-size: 11px;
+}
+.r-logo { color: var(--accent); font-weight: 700; font-size: 13px; letter-spacing: 0.06em; }
+.r-stat { color: var(--dim); }
+.r-stat b { color: var(--text); font-weight: 600; }
+.r-spacer { flex: 1; }
+.r-btn {
+  background: none; border: 1px solid var(--border); color: var(--dim);
+  font: inherit; font-size: 10px; padding: 2px 8px; border-radius: 3px; cursor: pointer;
+}
+.r-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Canvas */
+#canvas-wrap { position: relative; overflow: hidden; }
+canvas { display: block; width: 100%; height: 100%; }
+
+/* Tooltip */
+#tooltip {
+  position: fixed; pointer-events: none; z-index: 100;
+  background: #0d1520; border: 1px solid var(--border);
+  padding: 8px 12px; border-radius: 4px; font-size: 11px;
+  max-width: 280px; display: none; line-height: 1.5;
+}
+#tooltip .tt-name { color: var(--accent); font-weight: 700; font-size: 12px; }
+#tooltip .tt-type { color: var(--dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+#tooltip .tt-row { display: flex; justify-content: space-between; gap: 16px; }
+#tooltip .tt-label { color: var(--dim); }
+#tooltip .tt-val { color: var(--text); font-weight: 600; }
+#tooltip .tt-val.hi { color: var(--green); }
+#tooltip .tt-val.lo { color: var(--red); }
+
+/* Bottom panel — wisdom stream */
+#stream {
+  display: grid; grid-template-columns: 260px 1fr;
+  border-top: 1px solid var(--border); overflow: hidden;
+}
+
+#focus-list {
+  background: var(--surface); border-right: 1px solid var(--border);
+  overflow-y: auto; padding: 8px;
+}
+.fl-title { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+.fl-item {
+  display: grid; grid-template-columns: 1fr auto;
+  padding: 4px 6px; border-radius: 3px; font-size: 11px;
+  cursor: pointer; margin-bottom: 2px;
+}
+.fl-item:hover { background: #141c28; }
+.fl-item .name { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fl-item .sti { color: var(--amber); font-weight: 600; font-size: 10px; }
+
+#wisdom {
+  overflow-y: auto; padding: 10px 14px; font-size: 11px; line-height: 1.65;
+}
+.w-entry { margin-bottom: 8px; padding: 6px 10px; background: var(--surface); border-radius: 4px; border-left: 2px solid var(--border); }
+.w-entry.active { border-left-color: var(--accent); }
+.w-source { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.w-text { color: var(--text); }
+</style>
+</head>
+<body>
+
+<div id=\"app\">
+
+<div id=\"ribbon\">
+  <span class=\"r-logo\">coggy canvas</span>
+  <span class=\"r-stat\">nodes: <b id=\"r-nodes\">0</b></span>
+  <span class=\"r-stat\">focus: <b id=\"r-focus\">0</b></span>
+  <span class=\"r-stat\">STI fund: <b id=\"r-sti\">—</b></span>
+  <span class=\"r-spacer\"></span>
+  <button class=\"r-btn\" onclick=\"toggleSource('atomspace')\">atoms</button>
+  <button class=\"r-btn\" onclick=\"toggleSource('deskfloor')\">projects</button>
+  <button class=\"r-btn\" onclick=\"toggleSource('tmux')\">sessions</button>
+  <button class=\"r-btn\" onclick=\"refresh()\">refresh</button>
+  <a class=\"r-btn\" href=\"/\">chat</a>
+</div>
+
+<div id=\"canvas-wrap\">
+  <canvas id=\"c\"></canvas>
+</div>
+
+<div id=\"stream\">
+  <div id=\"focus-list\">
+    <div class=\"fl-title\">attentional focus</div>
+    <div id=\"fl-items\"></div>
+  </div>
+  <div id=\"wisdom\">
+    <div class=\"w-entry active\">
+      <div class=\"w-source\">canvas</div>
+      <div class=\"w-text\">Hover or click bubbles to explore the attention space. Size = STI. Color = source type. Proximity = relational closeness.</div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<div id=\"tooltip\"></div>
+
+<script>
+'use strict';
+
+const C = document.getElementById('c');
+const ctx = C.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+let W, H, nodes = [], links = [], focusSet = new Set();
+let hiddenSources = new Set();
+let hoveredNode = null, selectedNode = null;
+let mouse = { x: -1, y: -1 };
+
+const COLORS = {
+  ConceptNode:    { fill: '#1a3a5c', stroke: '#58a6ff', text: '#8cc4ff' },
+  PredicateNode:  { fill: '#2a1a3c', stroke: '#a78bfa', text: '#c4a6ff' },
+  InheritanceLink:{ fill: '#1a2a2a', stroke: '#2dd4bf', text: '#6ee7cc' },
+  deskfloor:      { fill: '#1c2a1c', stroke: '#3fb950', text: '#6ee77a' },
+  tmux:           { fill: '#2a2210', stroke: '#d29922', text: '#f0c050' },
+  default:        { fill: '#1a1e28', stroke: '#4a5568', text: '#8899aa' }
+};
+
+function colorFor(n) {
+  if (n.source === 'deskfloor') return COLORS.deskfloor;
+  if (n.source === 'tmux') return COLORS.tmux;
+  return COLORS[n.type] || COLORS.default;
+}
+
+function resize() {
+  const wrap = document.getElementById('canvas-wrap');
+  W = wrap.clientWidth; H = wrap.clientHeight;
+  C.width = W * devicePixelRatio;
+  C.height = H * devicePixelRatio;
+  C.style.width = W + 'px';
+  C.style.height = H + 'px';
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+}
+
+function radiusFor(n) {
+  const base = Math.max(8, Math.min(60, (n.sti || 1) * 3.5 + 10));
+  if (n === selectedNode) return base * 1.15;
+  if (n === hoveredNode) return base * 1.08;
+  return base;
+}
+
+function initPositions() {
+  for (const n of nodes) {
+    if (n.x == null) {
+      n.x = W * 0.1 + Math.random() * W * 0.8;
+      n.y = H * 0.1 + Math.random() * H * 0.8;
+    }
+    n.vx = 0; n.vy = 0;
+  }
+}
+
+function simulate() {
+  const visible = nodes.filter(n => !hiddenSources.has(n.source));
+  const dt = 0.3, friction = 0.88, gravity = 0.02;
+
+  // Gravity toward center
+  for (const n of visible) {
+    n.vx += (W / 2 - n.x) * gravity * dt;
+    n.vy += (H / 2 - n.y) * gravity * dt;
+  }
+
+  // Repulsion between nodes
+  for (let i = 0; i < visible.length; i++) {
+    for (let j = i + 1; j < visible.length; j++) {
+      const a = visible[i], b = visible[j];
+      let dx = b.x - a.x, dy = b.y - a.y;
+      let d = Math.sqrt(dx * dx + dy * dy) || 1;
+      const minDist = radiusFor(a) + radiusFor(b) + 4;
+      if (d < minDist) {
+        const force = (minDist - d) / d * 0.5;
+        const fx = dx * force, fy = dy * force;
+        a.vx -= fx; a.vy -= fy;
+        b.vx += fx; b.vy += fy;
+      }
+    }
+  }
+
+  // Apply velocity
+  for (const n of visible) {
+    n.vx *= friction; n.vy *= friction;
+    n.x += n.vx; n.y += n.vy;
+    // Boundary
+    const r = radiusFor(n);
+    n.x = Math.max(r, Math.min(W - r, n.x));
+    n.y = Math.max(r, Math.min(H - r, n.y));
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background grid
+  ctx.strokeStyle = '#0a0f18';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+  const visible = nodes.filter(n => !hiddenSources.has(n.source));
+
+  // Draw connections for focus atoms
+  ctx.lineWidth = 0.5;
+  for (const n of visible) {
+    if (!focusSet.has(n.id)) continue;
+    for (const m of visible) {
+      if (m === n || !focusSet.has(m.id)) continue;
+      ctx.strokeStyle = 'rgba(88,166,255,0.08)';
+      ctx.beginPath(); ctx.moveTo(n.x, n.y); ctx.lineTo(m.x, m.y); ctx.stroke();
+    }
+  }
+
+  // Draw bubbles
+  for (const n of visible) {
+    const r = radiusFor(n);
+    const c = colorFor(n);
+    const inFocus = focusSet.has(n.id);
+    const isHovered = n === hoveredNode;
+    const isSelected = n === selectedNode;
+
+    // Glow for focused atoms
+    if (inFocus || isSelected) {
+      ctx.save();
+      ctx.shadowColor = c.stroke;
+      ctx.shadowBlur = isSelected ? 20 : 12;
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = c.fill;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Bubble body
+    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = c.fill;
+    ctx.fill();
+
+    // Border
+    ctx.lineWidth = isHovered ? 2 : (inFocus ? 1.5 : 0.8);
+    ctx.strokeStyle = isHovered ? '#fff' : c.stroke;
+    ctx.globalAlpha = inFocus ? 1.0 : 0.6;
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+
+    // Confidence ring (partial arc)
+    if (n.confidence > 0) {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r + 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * n.confidence);
+      ctx.strokeStyle = c.stroke;
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.4;
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+    }
+
+    // Label
+    if (r > 14) {
+      const label = n.name || n.id;
+      const maxChars = Math.floor(r / 3.5);
+      const display = label.length > maxChars ? label.slice(0, maxChars) : label;
+      ctx.font = `${Math.max(8, Math.min(12, r * 0.28))}px ${getComputedStyle(document.body).fontFamily}`;
+      ctx.fillStyle = c.text;
+      ctx.globalAlpha = inFocus ? 1.0 : 0.7;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(display, n.x, n.y);
+      ctx.globalAlpha = 1.0;
+    }
+  }
+}
+
+function frame() {
+  simulate();
+  draw();
+  requestAnimationFrame(frame);
+}
+
+// Interaction
+C.addEventListener('mousemove', e => {
+  const rect = C.getBoundingClientRect();
+  mouse.x = e.clientX - rect.left;
+  mouse.y = e.clientY - rect.top;
+
+  const visible = nodes.filter(n => !hiddenSources.has(n.source));
+  hoveredNode = null;
+  for (const n of visible) {
+    const dx = mouse.x - n.x, dy = mouse.y - n.y;
+    if (dx * dx + dy * dy < radiusFor(n) ** 2) {
+      hoveredNode = n;
+      break;
+    }
+  }
+
+  if (hoveredNode) {
+    const n = hoveredNode;
+    const c = colorFor(n);
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top = (e.clientY - 10) + 'px';
+    tooltip.innerHTML = `
+      <div class=\\\"tt-name\\\">${esc(n.name || n.id)}</div>
+      <div class=\\\"tt-type\\\">${esc(n.type)} &middot; ${esc(n.source)}</div>
+      <div class=\\\"tt-row\\\"><span class=\\\"tt-label\\\">STI</span><span class=\\\"tt-val ${n.sti > 5 ? 'hi' : ''}\\\">${n.sti.toFixed(1)}</span></div>
+      <div class=\\\"tt-row\\\"><span class=\\\"tt-label\\\">strength</span><span class=\\\"tt-val\\\">${(n.strength || 0).toFixed(2)}</span></div>
+      <div class=\\\"tt-row\\\"><span class=\\\"tt-label\\\">confidence</span><span class=\\\"tt-val ${n.confidence < 0.3 ? 'lo' : ''}\\\">${(n.confidence || 0).toFixed(2)}</span></div>
+      ${n.branch ? '<div class=\\\"tt-row\\\"><span class=\\\"tt-label\\\">branch</span><span class=\\\"tt-val\\\">' + esc(n.branch) + '</span></div>' : ''}
+      ${n.dirty ? '<div class=\\\"tt-row\\\"><span class=\\\"tt-label\\\">dirty</span><span class=\\\"tt-val lo\\\">yes</span></div>' : ''}
+    `;
+    C.style.cursor = 'pointer';
+  } else {
+    tooltip.style.display = 'none';
+    C.style.cursor = 'default';
+  }
+});
+
+C.addEventListener('click', e => {
+  if (hoveredNode) {
+    selectedNode = selectedNode === hoveredNode ? null : hoveredNode;
+    if (selectedNode) showWisdom(selectedNode);
+  }
+});
+
+C.addEventListener('mouseleave', () => {
+  hoveredNode = null;
+  tooltip.style.display = 'none';
+});
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function showWisdom(n) {
+  const el = document.getElementById('wisdom');
+  const c = colorFor(n);
+  let html = `<div class=\\\"w-entry active\\\" style=\\\"border-left-color:${c.stroke}\\\">
+    <div class=\\\"w-source\\\">${esc(n.type)} &middot; ${esc(n.source)}</div>
+    <div class=\\\"w-text\\\"><b>${esc(n.name || n.id)}</b></div>
+  </div>`;
+
+  if (n.source === 'deskfloor' && n.path) {
+    html += `<div class=\\\"w-entry\\\"><div class=\\\"w-source\\\">path</div><div class=\\\"w-text\\\">${esc(n.path)}</div></div>`;
+  }
+
+  // Show related atoms from links
+  const related = nodes.filter(m => m !== n && m.source === n.source).slice(0, 5);
+  if (related.length) {
+    html += '<div class=\\\"w-entry\\\"><div class=\\\"w-source\\\">nearby</div><div class=\\\"w-text\\\">' +
+      related.map(r => esc(r.name || r.id)).join(' &middot; ') + '</div></div>';
+  }
+
+  el.innerHTML = html;
+}
+
+function renderFocusList() {
+  const el = document.getElementById('fl-items');
+  const sorted = [...nodes].sort((a, b) => (b.sti || 0) - (a.sti || 0)).slice(0, 15);
+  el.innerHTML = sorted.map(n =>
+    `<div class=\\\"fl-item\\\" onclick=\\\"selectById('${esc(n.id)}')\\\">
+      <span class=\\\"name\\\">${esc(n.name || n.id)}</span>
+      <span class=\\\"sti\\\">${(n.sti || 0).toFixed(1)}</span>
+    </div>`
+  ).join('');
+}
+
+function selectById(id) {
+  selectedNode = nodes.find(n => n.id === id) || null;
+  if (selectedNode) showWisdom(selectedNode);
+}
+
+function toggleSource(src) {
+  if (hiddenSources.has(src)) hiddenSources.delete(src);
+  else hiddenSources.add(src);
+}
+
+async function refresh() {
+  try {
+    const res = await fetch('/api/fleet');
+    const data = await res.json();
+
+    // Merge new data preserving positions
+    const oldMap = {};
+    for (const n of nodes) oldMap[n.id] = n;
+
+    nodes = (data.nodes || []).map(n => {
+      const old = oldMap[n.id];
+      return { ...n, x: old ? old.x : null, y: old ? old.y : null, vx: 0, vy: 0 };
+    });
+
+    focusSet = new Set((data.focus || []).map(k => typeof k === 'string' ? k.replace(/^:/, '') : k));
+    links = data.links || [];
+
+    initPositions();
+    renderFocusList();
+
+    document.getElementById('r-nodes').textContent = nodes.length;
+    document.getElementById('r-focus').textContent = focusSet.size;
+    if (data.budget) document.getElementById('r-sti').textContent = (data.budget['sti-funds'] || 0).toFixed(0);
+  } catch (err) {
+    console.error('fleet refresh failed', err);
+  }
+}
+
+window.addEventListener('resize', resize);
+resize();
+refresh();
+setInterval(refresh, 10000);
+frame();
+</script>
+</body>
+</html>
+")
+
+;; =============================================================================
 ;; API Handlers
 ;; =============================================================================
 
@@ -1254,7 +1701,8 @@ init();
                     :attention (:attention bank)
                     :focus (:focus bank)
                     :budget {:sti-funds (:sti-funds bank)
-                             :lti-funds (:lti-funds bank)}
+                             :sti-max (:sti-max bank)}
+                    :fund-balance (att/fund-balance (repl/bank))
                     :model (:model @llm/config)
                     :hyle {:port hyle-port
                            :status (if hyle-ok? "up" "down")}})))
@@ -1264,7 +1712,8 @@ init();
         bank @(repl/bank)]
     (json-response (assoc m
                           :sti-funds (:sti-funds bank)
-                          :lti-funds (:lti-funds bank)))))
+                          :sti-max (:sti-max bank)
+                          :fund-balance (att/fund-balance (repl/bank))))))
 
 (defn handle-boot []
   (let [space (repl/space)
@@ -1306,6 +1755,69 @@ init();
         out (ibid/ingest-corpus! (repl/space) (repl/bank) p)]
     (json-response out :status (if (:ok out) 200 400))))
 
+(defn handle-fleet []
+  "Aggregate cross-project data from deskfloor + local atomspace.
+   Produces nodes for the voronoi attention canvas."
+  (let [space @(repl/space)
+        bank @(repl/bank)
+        ;; Local atoms as attention nodes
+        atom-nodes (->> (:atoms space)
+                        (map (fn [[k a]]
+                               (let [sti (get-in bank [:attention k :av/sti] 0.0)
+                                     lti (get-in bank [:attention k :av/lti] 0.0)]
+                                 {:id (name k)
+                                  :type (name (:atom/type a))
+                                  :strength (get-in a [:atom/tv :tv/strength] 0.5)
+                                  :confidence (get-in a [:atom/tv :tv/confidence] 0.1)
+                                  :sti sti
+                                  :lti lti
+                                  :source "atomspace"})))
+                        (sort-by :sti >)
+                        (take 40))
+        ;; Try to pull project data from deskfloor
+        projects (try
+                   (let [conn ^java.net.HttpURLConnection
+                         (.openConnection (java.net.URL. "http://localhost:9900/projects"))]
+                     (.setConnectTimeout conn 2000)
+                     (.setReadTimeout conn 2000)
+                     (let [body (slurp (.getInputStream conn))]
+                       (->> (json/parse-string body true)
+                            (map (fn [[k v]]
+                                   {:id (name k)
+                                    :type (or (:type v) "unknown")
+                                    :path (:path v)
+                                    :dirty (get-in v [:git :dirty] false)
+                                    :branch (get-in v [:git :branch] "?")
+                                    :sti (if (:dirty (or (:git v) {})) 8.0 2.0)
+                                    :strength 0.6
+                                    :confidence 0.4
+                                    :source "deskfloor"})))))
+                   (catch Exception _ []))
+        ;; Try to pull tmux sessions
+        sessions (try
+                   (let [out (-> (Runtime/getRuntime)
+                                 (.exec (into-array String ["tmux" "list-sessions" "-F" "#{session_name}:#{session_windows}"]))
+                                 (.getInputStream)
+                                 slurp
+                                 str/trim)]
+                     (->> (str/split-lines out)
+                          (map (fn [line]
+                                 (let [[n w] (str/split line #":")]
+                                   {:id (str "session:" n)
+                                    :type "tmux-session"
+                                    :name n
+                                    :windows (parse-long (or w "1"))
+                                    :sti 1.0
+                                    :strength 0.5
+                                    :confidence 0.7
+                                    :source "tmux"})))))
+                   (catch Exception _ []))]
+    (json-response {:nodes (concat atom-nodes projects sessions)
+                    :links (:links space)
+                    :focus (:focus bank)
+                    :budget {:sti-funds (:sti-funds bank)
+                             :sti-max (:sti-max bank)}})))
+
 (defn handle-integration-catalog []
   (json-response
    {:projects
@@ -1342,6 +1854,10 @@ init();
                            :headers {"Content-Type" "text/html"}
                            :body index-html}
       [:get "/health"]    (json-response {:status "ok"})
+      [:get "/canvas"]    {:status 200
+                           :headers {"Content-Type" "text/html"}
+                           :body canvas-html}
+      [:get "/api/fleet"] (handle-fleet)
       [:get "/api/state"] (handle-state)
       [:get "/api/state/dump"] (handle-dump-state)
       [:get "/api/state/load"] (handle-load-state)
@@ -1356,6 +1872,7 @@ init();
                                 (json-response (bench/smoke-summary checks)))
       [:get "/api/haywire"]   (json-response (bench/detect-haywire))
       [:get "/api/evidence"]  (json-response (bench/recent-evidence 20))
+      [:get "/api/events"]    (json-response {:events (repl/recent-events 50)})
 
       [:post "/api/chat"] (let [body (json/parse-string (slurp body) true)]
                             (handle-chat body))
