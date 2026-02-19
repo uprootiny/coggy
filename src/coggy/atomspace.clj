@@ -118,10 +118,12 @@
   (let [k (atom-key a)]
     (swap! space
            (fn [s]
-             (-> s
-                 (assoc-in [:atoms k] a)
-                 (update-in [:indices (:atom/type a)] (fnil conj []) k)
-                 (update :counter inc))))
+             (let [existing? (contains? (:atoms s) k)]
+               (-> s
+                   (assoc-in [:atoms k] a)
+                   (cond-> (not existing?)
+                     (update-in [:indices (:atom/type a)] (fnil conj []) k))
+                   (update :counter inc)))))
     a))
 
 (defn add-link!
