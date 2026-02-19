@@ -125,10 +125,21 @@
      :quota-hits (:quota-hits entry)
      :budget-hits (:budget-hits entry)}))
 
+(def score-weights
+  "Model scoring weights. Extracted for legibility and future tuning/search.
+   Lower total score = better candidate."
+  {:cooldown-per-s 2.2
+   :fail-rate      7.5
+   :quota-hits     1.4
+   :budget-hits    2.0
+   :latency-per-s  1.0
+   :sticky-bonus  -0.15})
+
 (defn model-score
   "Lower is better; penalize cooldowns, repeated quota/budget hits, failures, latency."
   [model entry now]
-  (let [fail (double (or (:failures entry) 0))
+  (let [w score-weights
+        fail (double (or (:failures entry) 0))
         succ (double (or (:successes entry) 0))
         attempts (max 1.0 (+ fail succ))
         fail-rate (/ fail attempts)
@@ -136,12 +147,12 @@
         budget (double (or (:budget-hits entry) 0))
         latency (/ (double (or (:avg-latency-ms entry) 0)) 1000.0)
         cooldown-s (/ (double (cooldown-remaining-ms entry now)) 1000.0)
-        sticky (if (= model (:model @config)) -0.15 0.0)]
-    (+ (* cooldown-s 2.2)
-       (* fail-rate 7.5)
-       (* quota 1.4)
-       (* budget 2.0)
-       latency
+        sticky (if (= model (:model @config)) (:sticky-bonus w) 0.0)]
+    (+ (* cooldown-s (:cooldown-per-s w))
+       (* fail-rate (:fail-rate w))
+       (* quota (:quota-hits w))
+       (* budget (:budget-hits w))
+       (* latency (:latency-per-s w))
        sticky)))
 
 (defn model-candidates
