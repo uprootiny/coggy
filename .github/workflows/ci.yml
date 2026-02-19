@@ -69,6 +69,8 @@ jobs:
                 (assert (= 200 (:status resp)) "index should return 200"))
               (let [resp (http/get "http://localhost:18421/api/metrics" {:throw false})]
                 (assert (= 200 (:status resp)) "metrics should return 200"))
+              (let [resp (http/get "http://localhost:18421/api/events" {:throw false})]
+                (assert (= 200 (:status resp)) "events should return 200"))
               (stop-fn)
               (println "Web server smoke test OK")))'
 
