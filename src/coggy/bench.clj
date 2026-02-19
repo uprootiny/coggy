@@ -166,23 +166,6 @@
 ;; Free Model Reliability Probe
 ;; =============================================================================
 
-(defn probe-model
-  "Probe a single model for liveness. Returns {:model :ok :latency-ms :error}."
-  [model]
-  (let [t0 (System/currentTimeMillis)
-        resp (try
-               (llm/chat [{:role "user" :content "Say ok"}]
-                          :model model
-                          :allow-fallback? false
-                          :max-attempts 1)
-               (catch Exception e
-                 {:ok false :error (.getMessage e)}))]
-    {:model model
-     :ok (:ok resp)
-     :latency-ms (- (System/currentTimeMillis) t0)
-     :error (when-not (:ok resp) (:error resp))
-     :status (:status resp)}))
-
 ;; =============================================================================
 ;; Evidence Log
 ;; =============================================================================

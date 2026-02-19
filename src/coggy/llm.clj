@@ -374,15 +374,6 @@
                             :name (:name m)
                             :pricing (:pricing m)})))))))
 
-(defn list-free-models
-  "Filter to models with zero prompt pricing."
-  []
-  (->> (list-models)
-       (filter (fn [m]
-                 (and (get-in m [:pricing :prompt])
-                      (= "0" (get-in m [:pricing :prompt])))))
-       (mapv :id)))
-
 ;; =============================================================================
 ;; Doctor
 ;; =============================================================================
