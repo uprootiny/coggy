@@ -259,6 +259,14 @@
                                   source target))]
         (as/add-link! space link)))
 
+    ;; Spread activation through committed links
+    (doseq [r (:relations semantic)]
+      (let [src-key (keyword (canonical-concept (:a r)))]
+        (let [related-links (as/query-links space
+                              (fn [l] (= (:atom/name (:link/source l)) src-key)))]
+          (when (seq related-links)
+            (att/spread-activation! bank related-links src-key 0.3)))))
+
     ;; Decay and update focus
     (att/decay! bank decay-rate)
     (att/update-focus! bank)))
@@ -402,10 +410,66 @@
       (ok "will add semantic prompt suffix next turn")
 
       :ontology-miss
-      (err :not-implemented "needs librarian role — extend-relations")
+      (let [;; Find grounded concepts in focus
+            focused (att/focus-atoms bank)
+            focus-keys (set (map :key focused))
+            ;; Query existing links involving focused atoms
+            existing (as/query-links space
+                       (fn [l] (or (focus-keys (:atom/name (:link/source l)))
+                                   (focus-keys (:atom/name (:link/target l))))))
+            ;; Extract parent types from inheritance links
+            parents (->> existing
+                         (filter #(= :InheritanceLink (:atom/type %)))
+                         (map #(:atom/name (:link/target %)))
+                         (remove nil?)
+                         set)
+            ;; Find siblings: concepts sharing a parent
+            siblings (when (seq parents)
+                       (->> (as/query-links space
+                              (fn [l] (and (= :InheritanceLink (:atom/type l))
+                                           (parents (:atom/name (:link/target l))))))
+                            (map (fn [l] (:atom/name (:link/source l))))
+                            (remove nil?)
+                            distinct))
+            ;; Create similarity links between focused atoms and their siblings
+            pairs (for [f focus-keys
+                        s siblings
+                        :when (and s (not= f s))]
+                    [f s])]
+        (if (seq pairs)
+          (do
+            (doseq [[a b] (take 4 pairs)]
+              (as/add-link! space
+                (as/similarity (as/concept (name a)) (as/concept (name b))
+                               (as/stv 0.5 0.3)))
+              (att/stimulate! bank b 4.0))
+            (att/update-focus! bank)
+            (ok (str "inferred " (min 4 (count pairs)) " similarity links from shared parents")))
+          ;; Fallback: link focused concepts to each other
+          (let [fkeys (take 3 (map :key focused))]
+            (doseq [[a b] (partition 2 1 fkeys)]
+              (as/add-link! space
+                (as/similarity (as/concept (name a)) (as/concept (name b))
+                               (as/stv 0.4 0.2))))
+            (ok (str "linked " (count fkeys) " focused concepts by proximity")))))
 
       :contradiction-blocked
-      (err :not-implemented "contradiction detected — needs reconcile-tv")
+      (let [;; Re-add all grounded concepts with the semantic's confidence
+            ;; This triggers tv-revise in add-atom!, merging toward coherence
+            conf (or (:confidence (second (find failure :result/reason))) 0.3)
+            focused (att/focus-atoms bank)
+            focus-keys (map :key focused)
+            revised (doall
+                      (for [k focus-keys
+                            :let [existing (as/get-atom space (name k))]
+                            :when (and existing (:atom/tv existing))]
+                        (do
+                          (as/add-atom! space
+                            (assoc existing :atom/tv (as/stv conf 0.4)))
+                          k)))]
+        (att/decay! bank 0.15)
+        (att/update-focus! bank)
+        (ok (str "revised " (count revised) " atoms toward confidence " (format "%.1f" (double conf)))))
 
       (err :not-implemented (str "unknown recovery for " failure-type)))))
 
