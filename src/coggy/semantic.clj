@@ -18,6 +18,14 @@
 (require '[clojure.string :as str])
 
 ;; =============================================================================
+;; Result Types — totality over partiality
+;; =============================================================================
+
+(defn ok [val] {:result/ok true :result/val val})
+(defn err [type reason] {:result/ok false :result/type type :result/reason reason})
+(defn ok? [r] (true? (:result/ok r)))
+
+;; =============================================================================
 ;; Semantic Block Schema
 ;; =============================================================================
 ;;
@@ -32,36 +40,28 @@
 
 (defn extract-semantic-block
   "Extract the semantic block from LLM response text.
-   Tries EDN first, then JSON-ish, then brute-force concept extraction."
+   Returns (ok semantic-map) or (err :parser-miss reason)."
   [text]
-  (or
-    ;; Try ```semantic ... ``` block
-    (when-let [match (re-find #"(?s)```semantic\s*\n(.*?)```" text)]
-      (try
-        (read-string (second match))
-        (catch Exception _ nil)))
-
-    ;; Try inline semantic fence on one line
-    (when-let [match (re-find #"(?s)```semantic\s*(\{.*?\})\s*```" text)]
-      (try
-        (read-string (second match))
-        (catch Exception _ nil)))
-
-    ;; Try ```json ... ``` with semantic keys
-    (when-let [match (re-find #"(?s)```json\n(\{.*?\"concepts\".*?\})```" text)]
-      (try
-        (let [parsed (read-string (str/replace (second match) #"\"(\w+)\":" ":$1 "))]
-          parsed)
-        (catch Exception _ nil)))
-
-    ;; Try inline {:concepts [...]}
-    (when-let [match (re-find #"(?s)\{:concepts\s+\[.*?\].*?\}" text)]
-      (try
-        (read-string match)
-        (catch Exception _ nil)))
-
-    ;; Fallback: nil (parser-miss)
-    nil))
+  (let [try-parse (fn [s] (try (read-string s) (catch Exception _ nil)))
+        ;; Strategy 1: ```semantic ... ``` block
+        s1 (when-let [match (re-find #"(?s)```semantic\s*\n(.*?)```" text)]
+             (try-parse (second match)))
+        ;; Strategy 2: inline semantic fence
+        s2 (when-not s1
+             (when-let [match (re-find #"(?s)```semantic\s*(\{.*?\})\s*```" text)]
+               (try-parse (second match))))
+        ;; Strategy 3: json block with semantic keys
+        s3 (when-not (or s1 s2)
+             (when-let [match (re-find #"(?s)```json\n(\{.*?\"concepts\".*?\})```" text)]
+               (try-parse (str/replace (second match) #"\"(\w+)\":" ":$1 "))))
+        ;; Strategy 4: inline {:concepts [...]}
+        s4 (when-not (or s1 s2 s3)
+             (when-let [match (re-find #"(?s)\{:concepts\s+\[.*?\].*?\}" text)]
+               (try-parse match)))
+        result (or s1 s2 s3 s4)]
+    (if result
+      (ok result)
+      (err :parser-miss "no semantic block found after 4 extraction strategies"))))
 
 (def fallback-stopwords
   #{"the" "and" "for" "with" "this" "that" "have" "from"
@@ -338,45 +338,35 @@
 ;; =============================================================================
 
 (defn diagnose-failure
-  "Diagnose why grounding failed. Returns typed failure."
+  "Diagnose grounding result. Returns (ok {:type :healthy}) or (err :type reason).
+   Total: always returns a result, never nil."
   [semantic concept-grounding relation-grounding bank]
   (cond
     (nil? semantic)
-    {:type :parser-miss
-     :reason "LLM did not produce SEMANTIC block"
-     :recovery :add-semantic-suffix}
+    (err :parser-miss "LLM did not produce SEMANTIC block")
 
     (empty? (:concepts semantic))
-    {:type :parser-miss
-     :reason "SEMANTIC block had no concepts"
-     :recovery :add-semantic-suffix}
+    (err :parser-miss "SEMANTIC block had no concepts")
 
     (zero? (:rate concept-grounding))
-    {:type :grounding-vacuum
-     :reason "no concepts matched existing atoms"
-     :recovery :seed-ontology}
+    (err :grounding-vacuum "no concepts matched existing atoms")
 
     (and (seq (:relations semantic))
          (zero? (:rate relation-grounding)))
-    {:type :ontology-miss
-     :reason "concepts grounded but no relations matched"
-     :recovery :extend-relations}
+    (err :ontology-miss "concepts grounded but no relations matched")
 
     (< (:sti-funds @bank) -120.0)
-    {:type :budget-exhausted
-     :reason "ECAN funds depleted"
-     :recovery :reset-attention}
+    (err :budget-exhausted "ECAN funds depleted")
 
-    ;; Contradiction: high grounding rate but semantic confidence contradicts
-    ;; existing atoms (grounded concepts with divergent confidence)
     (and (> (:rate concept-grounding) 0.5)
          (some? (:confidence semantic))
          (< (:confidence semantic) 0.3))
-    {:type :contradiction-blocked
-     :reason "low semantic confidence despite grounded concepts — possible contradiction"
-     :recovery :reconcile-tv}
+    (err :contradiction-blocked "low semantic confidence despite grounded concepts")
 
-    :else nil))
+    :else
+    (ok {:type :healthy
+         :grounding-rate (:rate concept-grounding)
+         :relation-rate (:rate relation-grounding)})))
 
 (defn vacuum-detected?
   "Check if we're in a grounding vacuum (N consecutive failures)."
@@ -386,37 +376,38 @@
          (every? zero? rates))))
 
 (defn trigger-rescue!
-  "Execute the grounding vacuum rescue reflex."
+  "Execute the grounding vacuum rescue reflex.
+   Returns (ok action-description) or (err :not-implemented reason)."
   [space bank failure]
   (swap! metrics update :vacuum-triggers inc)
 
-  (case (:recovery failure)
-    :seed-ontology
-    (do
-      ;; Seed some broad concepts to create footholds
-      (doseq [c ["thing" "idea" "action" "state" "relation"
-                  "cause" "effect" "agent" "object" "property"]]
-        (as/add-atom! space (as/concept c (as/stv 0.5 0.2)))
-        (att/stimulate! bank (keyword c) 3.0))
-      (att/update-focus! bank)
-      {:rescued true :action "seeded broad ontology footholds"})
+  (let [failure-type (:result/type failure)]
+    (case failure-type
+      :grounding-vacuum
+      (do
+        (doseq [c ["thing" "idea" "action" "state" "relation"
+                    "cause" "effect" "agent" "object" "property"]]
+          (as/add-atom! space (as/concept c (as/stv 0.5 0.2)))
+          (att/stimulate! bank (keyword c) 3.0))
+        (att/update-focus! bank)
+        (ok "seeded broad ontology footholds"))
 
-    :reset-attention
-    (do
-      (att/decay! bank 0.9)  ;; massive decay to reclaim funds
-      (att/update-focus! bank)
-      {:rescued true :action "reset attention bank"})
+      :budget-exhausted
+      (do
+        (att/decay! bank 0.9)
+        (att/update-focus! bank)
+        (ok "reset attention bank"))
 
-    :extend-relations
-    {:rescued false :action "needs librarian role (not yet implemented)"}
+      :parser-miss
+      (ok "will add semantic prompt suffix next turn")
 
-    :add-semantic-suffix
-    {:rescued false :action "will add semantic prompt suffix next turn"}
+      :ontology-miss
+      (err :not-implemented "needs librarian role — extend-relations")
 
-    :reconcile-tv
-    {:rescued false :action "contradiction detected — needs human arbitration"}
+      :contradiction-blocked
+      (err :not-implemented "contradiction detected — needs reconcile-tv")
 
-    {:rescued false :action "unknown recovery path"}))
+      (err :not-implemented (str "unknown recovery for " failure-type)))))
 
 ;; =============================================================================
 ;; Semantic Prompt Suffix — enforce the contract
@@ -454,8 +445,10 @@ Never emit an empty structure. Guess if you must.")
   "Full semantic processing pipeline for an LLM response.
    Returns {:semantic :grounding :diagnosis :rescue :metrics}."
   [space bank llm-response]
-  (let [raw (or (extract-semantic-block llm-response)
-                (fallback-semantic-from-text llm-response))
+  (let [extract-result (extract-semantic-block llm-response)
+        raw (if (ok? extract-result)
+              (:result/val extract-result)
+              (fallback-semantic-from-text llm-response))
         semantic (normalize-semantic raw)
         concept-ground (ground-concepts space (or (:concepts semantic) []))
         relation-ground (ground-relations space (or (:relations semantic) []))
@@ -463,15 +456,15 @@ Never emit an empty structure. Guess if you must.")
 
     ;; Record metrics
     (record-metrics! semantic concept-ground relation-ground)
-    (when (= :budget-exhausted (:type diagnosis))
+    (when (= :budget-exhausted (:result/type diagnosis))
       (swap! metrics update :budget-exhaustions (fnil inc 0)))
 
     ;; Commit if we have anything
     (when (and semantic (seq (:concepts semantic)))
       (commit-semantics! space bank semantic concept-ground))
 
-    ;; Rescue if needed
-    (let [rescue (when (and diagnosis (vacuum-detected? 2))
+    ;; Rescue if needed (only on failure, not on healthy)
+    (let [rescue (when (and (not (ok? diagnosis)) (vacuum-detected? 2))
                    (trigger-rescue! space bank diagnosis))]
 
       {:semantic semantic
