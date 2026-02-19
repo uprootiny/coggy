@@ -28,8 +28,42 @@
          :active-domain nil
          :started-at (System/currentTimeMillis)}))
 
+;; =============================================================================
+;; Event Log — structured state transition audit trail
+;; =============================================================================
+
+(defonce event-log
+  (atom {:events [] :cap 200}))
+
+(defn log-event!
+  "Record a typed event with timestamp. Capped at :cap entries."
+  [type data]
+  (swap! event-log
+         (fn [el]
+           (update el :events
+                   (fn [es]
+                     (vec (take-last (:cap el)
+                                     (conj es {:type type
+                                               :at (System/currentTimeMillis)
+                                               :data data}))))))))
+
 (defn space [] (:space @session))
 (defn bank [] (:bank @session))
+
+(defn recent-events
+  "Return the last N events from the event log."
+  [n]
+  (take-last n (:events @event-log)))
+
+(defn make-system
+  "Create an isolated system map. For dependency injection and testing."
+  []
+  {:space (as/make-space)
+   :bank (att/make-bank)
+   :session (atom {:history [] :turn 0 :concepts-seen #{}
+                   :active-domain nil
+                   :started-at (System/currentTimeMillis)})
+   :event-log (atom {:events [] :cap 200})})
 
 (defn http-get-json
   "Small helper for local status probes without extra deps."
@@ -88,6 +122,7 @@
      :semantic-metrics (sem/metrics-state)
      :llm {:config (select-keys @llm/config [:model :max-tokens :temperature :site-url :site-name])
            :ledger (llm/ledger-state)}
+     :event-log (:events @event-log)
      :at (System/currentTimeMillis)}))
 
 (defn restore-state!
@@ -107,6 +142,8 @@
       (llm/configure! cfg))
     (when-let [ledger (get-in snap [:llm :ledger])]
       (llm/restore-ledger! ledger))
+    (when-let [events (:event-log snap)]
+      (swap! event-log assoc :events (vec events)))
     {:ok true
      :turn (:turn @session)
      :atoms (count (:atoms @(space)))
@@ -232,6 +269,7 @@ RULES:
   [user-input]
   (let [turn (inc (:turn @session))
         _ (swap! session assoc :turn turn)
+        _ (log-event! :turn-start {:turn turn :input (subs user-input 0 (min 120 (count user-input)))})
 
         ;; Pre-extract concepts from user input (for seeding before LLM call)
         concepts (extract-concepts-from-text user-input)
@@ -285,6 +323,9 @@ RULES:
                     :hint (:hint d)
                     :status (:status d)})))
 
+        _ (log-event! :llm-response {:ok (:ok resp) :model (:model resp)
+                                       :status (:status resp)})
+
         content (if (:ok resp)
                   (:content resp)
                   (str "⚠ LLM error: " (:error resp)
@@ -296,6 +337,10 @@ RULES:
 
         ;; Run semantic pipeline — extract, ground, commit, rescue
         sem-result (sem/process-semantic! space bank content)
+        _ (log-event! :semantic-commit {:concepts (get-in sem-result [:semantic :concepts])
+                                         :grounding-rate (get-in sem-result [:grounding :concepts :rate])
+                                         :diagnosis-type (when-let [d (:diagnosis sem-result)]
+                                                           (if (sem/ok? d) :healthy (:result/type d)))})
         sem-data (:semantic sem-result)
         concept-ground (get-in sem-result [:grounding :concepts])
         diagnosis (:diagnosis sem-result)
@@ -335,8 +380,12 @@ RULES:
                               :updated (count (:grounded concept-ground))
                               :grounding-rate (:rate concept-ground)
                               :focus-concept (when (seq focus) (name (:key (first focus))))
-                              :diagnosis (when diagnosis (:type diagnosis))
-                              :rescue (when rescue (:action rescue))
+                              :diagnosis (when (and diagnosis (not (sem/ok? diagnosis)))
+                                       (:result/type diagnosis))
+                              :rescue (when rescue
+                                        (if (sem/ok? rescue)
+                                          (:result/val rescue)
+                                          (:result/reason rescue)))
                               :next-question nil}}
 
         ;; Strip trace blocks from display content (multiple formats LLMs emit)
@@ -353,6 +402,13 @@ RULES:
                             (str/replace #"(?s)\nPARSE\s*:[\s\S]*" "")
                             ;; Cleanup: collapse multiple blank lines
                             (str/replace #"\n{3,}" "\n\n"))]
+
+    ;; Wire evidence log so haywire detection works
+    (bench/log-evidence!
+     (str "turn-" turn)
+     (if (sem/ok? diagnosis) "healthy" (name (or (:result/type diagnosis) :unknown)))
+     (str "grounding-rate:" (format "%.2f" (double (or (:rate concept-ground) 0.0))))
+     (if (:ok resp) "llm-ok" (str "llm-fail:" (:status resp))))
 
     {:content (str/trim display-content)
      :trace trace-data
