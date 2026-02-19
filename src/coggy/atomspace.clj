@@ -24,6 +24,18 @@
 (def tv-default (stv 0.5 0.1))
 (def tv-false (stv 0.0 0.9))
 
+(defn tv-revise
+  "PLN-style truth value revision. Merges two independent observations.
+   Higher confidence dominates; strength is confidence-weighted average."
+  [tv1 tv2]
+  (let [s1 (:tv/strength tv1) c1 (:tv/confidence tv1)
+        s2 (:tv/strength tv2) c2 (:tv/confidence tv2)
+        w (+ c1 c2)]
+    (if (zero? w)
+      tv-default
+      (stv (/ (+ (* s1 c1) (* s2 c2)) w)
+           (min 0.99 (+ c1 c2 (- (* c1 c2))))))))
+
 ;; =============================================================================
 ;; Atom Types
 ;; =============================================================================
@@ -113,15 +125,19 @@
       (hash a)))
 
 (defn add-atom!
-  "Assert an atom into the space. Returns the atom."
+  "Assert an atom into the space. Returns the atom.
+   If the atom already exists, revises its truth value via PLN revision."
   [space a]
   (let [k (atom-key a)]
     (swap! space
            (fn [s]
-             (let [existing? (contains? (:atoms s) k)]
+             (let [existing (get-in s [:atoms k])
+                   merged (if (and existing (:atom/tv existing) (:atom/tv a))
+                            (assoc a :atom/tv (tv-revise (:atom/tv existing) (:atom/tv a)))
+                            a)]
                (-> s
-                   (assoc-in [:atoms k] a)
-                   (cond-> (not existing?)
+                   (assoc-in [:atoms k] merged)
+                   (cond-> (nil? existing)
                      (update-in [:indices (:atom/type a)] (fnil conj []) k))
                    (update :counter inc)))))
     a))
