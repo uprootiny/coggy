@@ -71,6 +71,20 @@ jobs:
                 (assert (= 200 (:status resp)) "metrics should return 200"))
               (let [resp (http/get "http://localhost:18421/api/events" {:throw false})]
                 (assert (= 200 (:status resp)) "events should return 200"))
+              (let [resp (http/get "http://localhost:18421/api/focus" {:throw false})]
+                (assert (= 200 (:status resp)) "focus should return 200"))
+              (let [resp (http/post "http://localhost:18421/api/observe"
+                           {:headers {"Content-Type" "application/json"}
+                            :body "{\"concepts\":[\"test-agent\",\"smoke\"],\"relations\":[],\"confidence\":0.5,\"source\":\"ci\"}"
+                            :throw false})]
+                (assert (= 200 (:status resp)) "observe should return 200"))
+              (let [resp (http/post "http://localhost:18421/api/query"
+                           {:headers {"Content-Type" "application/json"}
+                            :body "{\"concepts\":[\"test-agent\"]}"
+                            :throw false})]
+                (assert (= 200 (:status resp)) "query should return 200"))
+              (let [resp (http/get "http://localhost:18421/api/atoms/test-agent" {:throw false})]
+                (assert (= 200 (:status resp)) "atom lookup should return 200"))
               (stop-fn)
               (println "Web server smoke test OK")))'
 
