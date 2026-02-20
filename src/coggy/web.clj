@@ -1697,7 +1697,7 @@ frame();
                      (= 200 (.getResponseCode conn)))
                    (catch Exception _ false))]
     (json-response {:atoms (:atoms space)
-                    :links (count (:links space))
+                    :links (count (:link-map space))
                     :attention (:attention bank)
                     :focus (:focus bank)
                     :budget {:sti-funds (:sti-funds bank)
@@ -1813,7 +1813,7 @@ frame();
                                     :source "tmux"})))))
                    (catch Exception _ []))]
     (json-response {:nodes (concat atom-nodes projects sessions)
-                    :links (:links space)
+                    :links (vals (:link-map space))
                     :focus (:focus bank)
                     :budget {:sti-funds (:sti-funds bank)
                              :sti-max (:sti-max bank)}})))

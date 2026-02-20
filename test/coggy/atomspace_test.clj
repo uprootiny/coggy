@@ -111,6 +111,21 @@
     (is (= :ContextLink (:atom/type link)) "type")
     (is (= ctx (:link/context link)) "context")))
 
+(deftest link-deduplication
+  (let [space (as/make-space)]
+    (as/add-link! space (as/inheritance (as/concept "rose") (as/concept "flower")))
+    (as/add-link! space (as/inheritance (as/concept "rose") (as/concept "flower")))
+    (as/add-link! space (as/inheritance (as/concept "rose") (as/concept "flower")))
+    (is (= 1 (:links (as/space-stats space))) "duplicate links should be deduplicated")
+    ;; Different link should be distinct
+    (as/add-link! space (as/inheritance (as/concept "lily") (as/concept "flower")))
+    (is (= 2 (:links (as/space-stats space))) "distinct links should both exist")
+    ;; TV should be revised on duplicate
+    (let [lk (as/link-key (as/inheritance (as/concept "rose") (as/concept "flower")))
+          link (get-in @space [:link-map lk])]
+      (is (> (:tv/confidence (:atom/tv link)) 0.1)
+          "duplicate link should revise TV upward"))))
+
 (deftest atomspace-operations
   (let [space (as/make-space)]
     (as/add-atom! space (as/concept "cat"))
@@ -477,7 +492,7 @@
     (sem/commit-semantics! space bank semantic grounding)
     (is (some? (as/get-atom space "foo")) "foo should be in space")
     (is (some? (as/get-atom space "bar")) "bar should be in space")
-    (is (pos? (count (:links @space))) "should have links")))
+    (is (pos? (count (:link-map @space))) "should have links")))
 
 (deftest full-semantic-pipeline
   (let [space (as/make-space)

@@ -132,7 +132,15 @@
         s (:session snap)
         sp (:space snap)
         bk (:bank snap)]
-    (when (map? sp) (reset! (space) sp))
+    (when (map? sp)
+      ;; Migrate old :links vector to :link-map if needed
+      (let [migrated (if (and (contains? sp :links) (not (contains? sp :link-map)))
+                       (let [lm (reduce (fn [m l]
+                                          (assoc m (as/link-key l) l))
+                                        {} (:links sp))]
+                         (-> sp (dissoc :links) (assoc :link-map lm)))
+                       sp)]
+        (reset! (space) migrated)))
     (when (map? bk) (reset! (bank) bk))
     (when (map? s)
       (swap! session merge s))
@@ -147,7 +155,7 @@
     {:ok true
      :turn (:turn @session)
      :atoms (count (:atoms @(space)))
-     :links (count (:links @(space)))}))
+     :links (count (:link-map @(space)))}))
 
 (defn dump-state!
   "Write snapshot to disk (EDN)."
@@ -173,9 +181,14 @@
   (let [p (or path default-snapshot-path)
         f (io/file p)]
     (if (.exists f)
-      (let [snap (edn/read-string (slurp f))
-            out (restore-state! snap)]
-        (assoc out :path p))
+      (try
+        (let [snap (edn/read-string (slurp f))
+              out (restore-state! snap)]
+          (assoc out :path p))
+        (catch Exception e
+          {:ok false
+           :path p
+           :error (str "snapshot parse/load failed: " (.getMessage e))}))
       {:ok false :error (str "snapshot not found: " p)})))
 
 (defn list-snapshots
@@ -198,8 +211,12 @@
 (defn load-latest-snapshot!
   "Load most recent versioned snapshot."
   []
-  (if-let [snap (first (list-snapshots))]
-    (load-state! (:path snap))
+  (if-let [snaps (seq (list-snapshots))]
+    (or (some (fn [s]
+                (let [r (load-state! (:path s))]
+                  (when (:ok r) r)))
+              snaps)
+        {:ok false :error "no valid snapshots found"})
     {:ok false :error "no snapshots found"}))
 
 ;; =============================================================================

@@ -116,8 +116,8 @@
   "Create an empty AtomSpace."
   []
   (atom {:atoms {}      ;; name → atom
-         :links []      ;; ordered list of links
-         :indices {}    ;; type → [atoms]
+         :link-map {}   ;; link-key → link (deduplicated)
+         :indices {}    ;; type → [keys]
          :counter 0}))
 
 (defn atom-key [a]
@@ -142,15 +142,36 @@
                    (update :counter inc)))))
     a))
 
+(defn link-key
+  "Content-based identity for a link: [type source-name target-name].
+   Two links with the same type and endpoints are the same link."
+  [link]
+  (let [t (:atom/type link)]
+    (case t
+      :InheritanceLink [t (:atom/name (:link/source link)) (:atom/name (:link/target link))]
+      :SimilarityLink  [t (set [(:atom/name (:link/first link)) (:atom/name (:link/second link))])]
+      :ImplicationLink [t (:atom/name (:link/antecedent link)) (:atom/name (:link/consequent link))]
+      :ContextLink     [t (:atom/name (:link/context link)) (:atom/name (:link/atom link))]
+      :EvaluationLink  [t (:atom/name (:link/predicate link)) (mapv :atom/name (:link/args link))]
+      ;; Fallback: hash the whole link
+      (hash link))))
+
 (defn add-link!
-  "Assert a link into the space. Returns the link."
+  "Assert a link into the space. Returns the link.
+   If the same link (type + endpoints) already exists, revises its TV."
   [space link]
-  (swap! space
-         (fn [s]
-           (-> s
-               (update :links conj link)
-               (update-in [:indices (:atom/type link)] (fnil conj []) (hash link))
-               (update :counter inc))))
+  (let [k (link-key link)]
+    (swap! space
+           (fn [s]
+             (let [existing (get-in s [:link-map k])
+                   merged (if (and existing (:atom/tv existing) (:atom/tv link))
+                            (assoc link :atom/tv (tv-revise (:atom/tv existing) (:atom/tv link)))
+                            link)]
+               (-> s
+                   (assoc-in [:link-map k] merged)
+                   (cond-> (nil? existing)
+                     (update-in [:indices (:atom/type link)] (fnil conj []) k))
+                   (update :counter inc))))))
   link)
 
 (defn get-atom [space name]
@@ -163,11 +184,11 @@
 (defn query-links
   "Find links matching a predicate."
   [space pred]
-  (filterv pred (:links @space)))
+  (filterv pred (vals (:link-map @space))))
 
 (defn space-stats [space]
   (let [s @space]
     {:atoms (count (:atoms s))
-     :links (count (:links s))
+     :links (count (:link-map s))
      :types (into {} (map (fn [[k v]] [k (count v)]) (:indices s)))
      :counter (:counter s)}))

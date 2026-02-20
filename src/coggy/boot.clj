@@ -83,6 +83,6 @@
     (trace/print-trace bt)
     (println "")
     (println (str "  seeded: " (count (:atoms @space)) " atoms, "
-                  (count (:links @space)) " links"))
+                  (count (:link-map @space)) " links"))
     (println ""))
   {:space space :bank bank})
