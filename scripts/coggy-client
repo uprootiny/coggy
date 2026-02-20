@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# coggy-client — talk to coggy's agent API from any project.
+#
+# Usage:
+#   coggy-client observe '{"concepts":["x","y"],"relations":[],"confidence":0.8}'
+#   coggy-client query   '{"concepts":["x"]}'
+#   coggy-client stimulate '{"atoms":{"x":15.0}}'
+#   coggy-client focus
+#   coggy-client atom <name>
+#   coggy-client health
+#
+# Environment:
+#   COGGY_URL  — base URL (default: http://localhost:8420)
+#   COGGY_SOURCE — agent name for observe calls (default: $PWD basename)
+
+set -euo pipefail
+
+COGGY_URL="${COGGY_URL:-http://localhost:8420}"
+COGGY_SOURCE="${COGGY_SOURCE:-$(basename "$PWD")}"
+
+post() {
+  curl -sf -X POST "$COGGY_URL$1" \
+    -H 'Content-Type: application/json' \
+    -d "$2"
+}
+
+get() {
+  curl -sf "$COGGY_URL$1"
+}
+
+case "${1:-help}" in
+  observe)
+    # Inject source field if not present
+    body="$2"
+    if ! echo "$body" | grep -q '"source"'; then
+      body=$(echo "$body" | sed "s/}$/,\"source\":\"$COGGY_SOURCE\"}/")
+    fi
+    post /api/observe "$body"
+    ;;
+  query)
+    post /api/query "$2"
+    ;;
+  stimulate)
+    post /api/stimulate "$2"
+    ;;
+  focus)
+    get /api/focus
+    ;;
+  atom)
+    get "/api/atoms/${2:?atom name required}"
+    ;;
+  health)
+    get /health
+    ;;
+  state)
+    get /api/state
+    ;;
+  metrics)
+    get /api/metrics
+    ;;
+  events)
+    get /api/events
+    ;;
+  help|*)
+    echo "coggy-client — agent API for coggy atomspace"
+    echo ""
+    echo "Commands:"
+    echo "  observe <json>    — push concepts + relations"
+    echo "  query <json>      — look up atoms + links"
+    echo "  stimulate <json>  — nudge attention"
+    echo "  focus             — current attentional focus"
+    echo "  atom <name>       — single atom lookup"
+    echo "  health            — health check"
+    echo "  state             — full state snapshot"
+    echo "  metrics           — semantic health"
+    echo "  events            — recent event log"
+    echo ""
+    echo "Env: COGGY_URL=$COGGY_URL  COGGY_SOURCE=$COGGY_SOURCE"
+    ;;
+esac
