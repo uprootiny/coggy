@@ -94,7 +94,156 @@ and conflict tracking. Do not provide operational wet-lab procedures."
     ["provenance-first grounding"
      "assay-context partitioning"
      "contradiction surfacing"
-     "uncertainty-calibrated inference"]}})
+     "uncertainty-calibrated inference"]}
+
+   :unix
+   {:name "Unix Ecosystem Operations"
+    :prompt
+    "Active domain: unix ecosystem operations.
+Reason about processes, services, file systems, network interfaces, and system state.
+Treat configuration as versioned data, services as typed processes with health signals,
+and failures as typed events with causal chains. Prefer composable pipelines over monoliths.
+When diagnosing, trace from symptom → intermediate cause → root cause."
+    :concepts
+    ["process" "service" "daemon" "socket" "port" "filesystem"
+     "permission" "cron-job" "systemd-unit" "container"
+     "log-stream" "config-file" "environment-variable"
+     "tmux-session" "pipeline" "signal"]
+    :relations
+    [{:type :inherits :a "daemon" :b "process"}
+     {:type :inherits :a "container" :b "process"}
+     {:type :inherits :a "cron-job" :b "scheduled-task"}
+     {:type :inherits :a "systemd-unit" :b "service"}
+     {:type :causes :a "config-file" :b "service"}
+     {:type :causes :a "signal" :b "process"}
+     {:type :causes :a "permission" :b "access-control"}
+     {:type :resembles :a "environment-variable" :b "config-file"}]
+    :strategies
+    ["symptom → cause → root-cause tracing"
+     "process tree inspection"
+     "config-as-data versioning"
+     "composable pipeline construction"
+     "service dependency mapping"]}
+
+   :research
+   {:name "Artistic & Research Processes"
+    :prompt
+    "Active domain: artistic and research processes.
+Treat creative work as structured exploration: hypotheses, experiments, artifacts, reflections.
+Track provenance of ideas — what inspired what, what contradicts what.
+Distinguish between generative phases (divergent, low-confidence, many candidates)
+and convergent phases (pruning, committing, raising confidence).
+Honor the tension between rigor and intuition — name it, don't resolve it prematurely."
+    :concepts
+    ["hypothesis" "experiment" "artifact" "reflection" "inspiration"
+     "constraint" "medium" "technique" "revision" "critique"
+     "generative-phase" "convergent-phase" "provenance"
+     "aesthetic-judgment" "research-question"]
+    :relations
+    [{:type :causes :a "hypothesis" :b "experiment"}
+     {:type :causes :a "experiment" :b "artifact"}
+     {:type :causes :a "critique" :b "revision"}
+     {:type :causes :a "inspiration" :b "hypothesis"}
+     {:type :inherits :a "generative-phase" :b "creative-process"}
+     {:type :inherits :a "convergent-phase" :b "creative-process"}
+     {:type :resembles :a "aesthetic-judgment" :b "constraint"}
+     {:type :causes :a "research-question" :b "experiment"}]
+    :strategies
+    ["diverge-then-converge phasing"
+     "provenance tracking for ideas"
+     "constraint-as-generative-force"
+     "artifact-first reasoning (make then understand)"
+     "revision-not-replacement attitude"]}
+
+   :balance
+   {:name "Balancing & Self-Management"
+    :prompt
+    "Active domain: balancing and self-management.
+Reason about energy, capacity, commitment, rest, and sustainability.
+Treat attention as a finite resource with replenishment cycles.
+Track load (what's demanding energy) vs recovery (what restores it).
+Surface conflicts between commitments early. Distinguish urgent from important.
+Be honest about capacity — overcommitment is a structural failure, not a character flaw."
+    :concepts
+    ["energy-level" "capacity" "commitment" "rest" "recovery"
+     "load" "boundary" "priority" "urgency" "importance"
+     "sustainability" "burnout-signal" "rhythm" "routine"
+     "debt" "slack"]
+    :relations
+    [{:type :causes :a "load" :b "energy-level"}
+     {:type :causes :a "recovery" :b "capacity"}
+     {:type :causes :a "overcommitment" :b "burnout-signal"}
+     {:type :causes :a "boundary" :b "sustainability"}
+     {:type :inherits :a "urgency" :b "priority"}
+     {:type :inherits :a "importance" :b "priority"}
+     {:type :resembles :a "debt" :b "overcommitment"}
+     {:type :causes :a "slack" :b "capacity"}]
+    :strategies
+    ["load vs capacity auditing"
+     "commitment conflict surfacing"
+     "urgent vs important separation"
+     "recovery-as-investment framing"
+     "rhythm over willpower"]}
+
+   :study
+   {:name "Studies & Learning"
+    :prompt
+    "Active domain: studies and learning.
+Treat knowledge as a graph: concepts connected by dependencies, analogies, and contradictions.
+Track what you know (grounded, high confidence), what you're learning (partial, growing),
+and what you don't know (gaps, low confidence). Use spaced repetition logic for review.
+Distinguish understanding (can explain and apply) from recognition (can identify).
+Name confusions explicitly — they're the most valuable data."
+    :concepts
+    ["concept" "dependency" "prerequisite" "understanding" "recognition"
+     "confusion" "gap" "review-interval" "mastery" "analogy"
+     "worked-example" "problem-set" "mental-model" "misconception"
+     "transfer" "curriculum"]
+    :relations
+    [{:type :inherits :a "prerequisite" :b "dependency"}
+     {:type :causes :a "worked-example" :b "understanding"}
+     {:type :causes :a "problem-set" :b "mastery"}
+     {:type :causes :a "confusion" :b "gap"}
+     {:type :causes :a "analogy" :b "transfer"}
+     {:type :resembles :a "misconception" :b "confusion"}
+     {:type :inherits :a "understanding" :b "mastery"}
+     {:type :causes :a "review-interval" :b "retention"}]
+    :strategies
+    ["prerequisite-first ordering"
+     "confusion-as-signal (name gaps)"
+     "spaced review scheduling"
+     "analogy bridge building"
+     "explain-to-verify understanding"]}
+
+   :accountability
+   {:name "Accountability & Reconciliation"
+    :prompt
+    "Active domain: accountability and reconciliation practices.
+Track commitments, outcomes, discrepancies, and repair actions.
+Distinguish between intention and impact. Surface patterns across incidents.
+Treat reconciliation as a process (acknowledge → understand → repair → prevent),
+not a single act. Be precise about what was promised, what was delivered,
+and what the gap means structurally — not just emotionally."
+    :concepts
+    ["commitment" "outcome" "discrepancy" "repair-action" "intention"
+     "impact" "pattern" "acknowledgment" "accountability-loop"
+     "trust" "breach" "restoration" "prevention" "ledger"
+     "follow-through" "review-cadence"]
+    :relations
+    [{:type :causes :a "commitment" :b "outcome"}
+     {:type :causes :a "discrepancy" :b "repair-action"}
+     {:type :causes :a "breach" :b "trust"}
+     {:type :causes :a "restoration" :b "trust"}
+     {:type :causes :a "acknowledgment" :b "restoration"}
+     {:type :causes :a "prevention" :b "sustainability"}
+     {:type :inherits :a "follow-through" :b "accountability-loop"}
+     {:type :resembles :a "ledger" :b "review-cadence"}]
+    :strategies
+    ["acknowledge → understand → repair → prevent cycle"
+     "intention vs impact separation"
+     "pattern detection across incidents"
+     "structural root cause over blame"
+     "commitment ledger maintenance"]}})
 
 (defn available-domains []
   (->> (keys domain-packs) (map name) sort vec))

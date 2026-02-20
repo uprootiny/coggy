@@ -38,7 +38,12 @@
     (is (contains? ds "bio") "should have bio")
     (is (contains? ds "forecast") "should have forecast")
     (is (contains? ds "legal") "should have legal")
-    (is (contains? ds "ibid-legal") "should have ibid-legal")))
+    (is (contains? ds "ibid-legal") "should have ibid-legal")
+    (is (contains? ds "unix") "should have unix")
+    (is (contains? ds "research") "should have research")
+    (is (contains? ds "balance") "should have balance")
+    (is (contains? ds "study") "should have study")
+    (is (contains? ds "accountability") "should have accountability")))
 
 (deftest get-domain-valid
   (let [d (domain/get-domain "legal")]
@@ -95,6 +100,24 @@
     (att/update-focus! bank)
     (let [focus (att/focus-atoms bank)]
       (is (seq focus) "should have focus atoms after seeding"))))
+
+(deftest all-domains-seed-successfully
+  (doseq [d (domain/available-domains)]
+    (let [space (as/make-space)
+          bank (att/make-bank)
+          result (domain/seed-domain! space bank d)]
+      (is (:ok result) (str d " should seed ok"))
+      (is (pos? (:added-atoms result)) (str d " should add atoms"))
+      (is (pos? (:added-links result)) (str d " should add links"))
+      (is (seq (:strategies result)) (str d " should have strategies")))))
+
+(deftest all-domains-have-prompt
+  (doseq [d (domain/available-domains)]
+    (let [pack (domain/get-domain d)]
+      (is (string? (:prompt pack)) (str d " should have prompt"))
+      (is (> (count (:prompt pack)) 50) (str d " prompt should be substantive"))
+      (is (>= (count (:concepts pack)) 10) (str d " should have >=10 concepts"))
+      (is (>= (count (:relations pack)) 4) (str d " should have >=4 relations")))))
 
 ;; =============================================================================
 
