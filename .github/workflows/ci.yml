@@ -7,19 +7,25 @@ on:
     branches: [main, master]
 
 jobs:
-  test:
+  lint-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Babashka
+      - name: Install deps
         run: |
+          sudo apt-get update
+          sudo apt-get install -y jq shellcheck
           curl -sLO https://raw.githubusercontent.com/babashka/babashka/master/install
           chmod +x install
           sudo ./install
 
       - name: Verify bb
         run: bb --version
+
+      - name: Shellcheck scripts
+        run: |
+          shellcheck coggy scripts/coggy-client scripts/deploy/coggyctl.sh scripts/tmux/*.sh
 
       - name: Run tests
         run: |
@@ -102,3 +108,35 @@ jobs:
               (assert (= 2 (count (get-in result [:semantic :concepts]))) "should have 2 concepts")
               (assert (some? (as/get-atom space "alpha")) "alpha should be grounded")
               (println (str "Semantic pipeline OK: " (get-in result [:metrics :turns]) " turns tracked"))))'
+
+  smoke-and-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Babashka
+        run: |
+          curl -sLO https://raw.githubusercontent.com/babashka/babashka/master/install
+          chmod +x install
+          sudo ./install
+
+      - name: Run coggy smoke
+        run: |
+          COGGY_PORT=18421 HYLE_PORT=18422 ./scripts/deploy/coggyctl.sh smoke | tee ci-smoke.log
+
+      - name: Capture API state sample
+        run: |
+          COGGY_PORT=18421 HYLE_PORT=18422 ./scripts/deploy/coggyctl.sh start
+          sleep 2
+          curl -fsS http://127.0.0.1:18421/health | tee ci-health.json
+          curl -fsS http://127.0.0.1:18421/api/state | head -c 50000 > ci-state.json
+          COGGY_PORT=18421 HYLE_PORT=18422 ./scripts/deploy/coggyctl.sh stop
+
+      - name: Upload CI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coggy-ci-artifacts
+          path: |
+            ci-smoke.log
+            ci-health.json
+            ci-state.json

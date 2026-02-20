@@ -1,0 +1,61 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      coggy_port:
+        description: "Coggy port"
+        required: true
+        default: "8421"
+      hyle_port:
+        description: "Companion hyle port"
+        required: true
+        default: "8420"
+      provision_subdomain:
+        description: "Subdomain to provision (optional)"
+        required: false
+        default: ""
+      provision_port:
+        description: "Port for subdomain proxy (optional)"
+        required: false
+        default: "8421"
+      dry_run:
+        description: "Dry run only (1=yes,0=apply)"
+        required: true
+        default: "1"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq
+          curl -sLO https://raw.githubusercontent.com/babashka/babashka/master/install
+          chmod +x install
+          sudo ./install
+
+      - name: Runtime smoke (project-specific)
+        run: |
+          chmod +x scripts/deploy/*.sh
+          COGGY_PORT="${{ inputs.coggy_port }}" HYLE_PORT="${{ inputs.hyle_port }}" ./scripts/deploy/coggyctl.sh smoke
+
+      - name: Restart runtime
+        run: |
+          COGGY_PORT="${{ inputs.coggy_port }}" HYLE_PORT="${{ inputs.hyle_port }}" ./scripts/deploy/coggyctl.sh restart
+
+      - name: Verify deployment endpoints
+        run: |
+          curl -fsS "http://127.0.0.1:${{ inputs.coggy_port }}/health" | jq .
+          curl -fsS "http://127.0.0.1:${{ inputs.coggy_port }}/api/state" | jq '{atoms:(.atoms|type),links:.links,model:.model}'
+
+      - name: Optional subdomain provisioning
+        if: ${{ inputs.provision_subdomain != '' }}
+        run: |
+          chmod +x scripts/deploy/provision_subdomain.sh
+          DRY_RUN="${{ inputs.dry_run }}" \
+          ./scripts/deploy/provision_subdomain.sh "${{ inputs.provision_subdomain }}" "${{ inputs.provision_port }}"
+
