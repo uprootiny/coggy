@@ -1847,6 +1847,57 @@ frame();
       :hook "/api/openrouter/models + /api/metrics"
       :note "latency/quota/budget and grounding health"}]}))
 
+;; =============================================================================
+;; Agent API Handlers — direct atomspace interaction for external agents
+;; =============================================================================
+
+(defn handle-observe [body]
+  (let [source (or (:source body) "unknown-agent")
+        observation (dissoc body :source)]
+    (repl/log-event! :agent-observe {:source source
+                                      :concepts (:concepts observation)})
+    (log! (str "◀ observe from " source ": " (count (:concepts observation)) " concepts"))
+    (let [result (sem/commit-observation! (repl/space) (repl/bank) observation)]
+      (log! (str "▶ grounded " (get-in result [:grounding :concepts :rate]) " of concepts"))
+      (json-response (assoc result
+                            :source source
+                            :stats (as/space-stats (repl/space)))))))
+
+(defn handle-query [body]
+  (let [concepts (or (:concepts body) [])
+        opts {:include-links? (not (false? (:include_links body)))
+              :include-attention? (not (false? (:include_attention body)))}]
+    (json-response {:results (sem/query-atoms (repl/space) (repl/bank) concepts opts)
+                    :focus (att/focus-atoms (repl/bank))
+                    :stats (as/space-stats (repl/space))})))
+
+(defn handle-stimulate [body]
+  (let [atoms-map (or (:atoms body) {})]
+    (doseq [[k amount] atoms-map]
+      (att/stimulate! (repl/bank) (keyword (name k)) (double amount)))
+    (att/update-focus! (repl/bank))
+    (repl/log-event! :agent-stimulate {:atoms (keys atoms-map)})
+    (json-response {:focus (att/focus-atoms (repl/bank))
+                    :fund-balance (att/fund-balance (repl/bank))})))
+
+(defn handle-focus []
+  (json-response {:focus (att/focus-atoms (repl/bank))
+                  :fund-balance (att/fund-balance (repl/bank))}))
+
+(defn handle-atom-lookup [name]
+  (let [atom (as/get-atom (repl/space) name)
+        k (keyword name)
+        bank (repl/bank)]
+    (if atom
+      (json-response {:name name
+                      :atom atom
+                      :links (as/query-links (repl/space)
+                               (fn [l] (or (= k (att/link-source-key l))
+                                           (some #{k} (att/link-atom-keys l)))))
+                      :sti (get-in @bank [:attention k :av/sti] 0.0)
+                      :in-focus? (boolean (att/in-focus? bank k))})
+      (json-response {:name name :found? false} :status 404))))
+
 (defn handler [{:keys [uri request-method body]}]
   (try
     (case [request-method uri]
@@ -1896,12 +1947,41 @@ frame();
       [:post "/api/ibid/ingest"] (let [body (json/parse-string (slurp body) true)]
                                    (handle-ibid-ingest body))
 
+      ;; Agent API
+      [:get "/api/focus"]    (handle-focus)
+      [:post "/api/observe"] (let [body (json/parse-string (slurp body) true)]
+                               (handle-observe body))
+      [:post "/api/query"]   (let [body (json/parse-string (slurp body) true)]
+                               (handle-query body))
+      [:post "/api/stimulate"] (let [body (json/parse-string (slurp body) true)]
+                                 (handle-stimulate body))
+
       [:options "/api/chat"] {:status 200
                               :headers {"Access-Control-Allow-Origin" "*"
                                         "Access-Control-Allow-Methods" "POST"
                                         "Access-Control-Allow-Headers" "Content-Type"}}
+      [:options "/api/observe"] {:status 200
+                                 :headers {"Access-Control-Allow-Origin" "*"
+                                           "Access-Control-Allow-Methods" "POST"
+                                           "Access-Control-Allow-Headers" "Content-Type"}}
+      [:options "/api/query"] {:status 200
+                                :headers {"Access-Control-Allow-Origin" "*"
+                                          "Access-Control-Allow-Methods" "POST"
+                                          "Access-Control-Allow-Headers" "Content-Type"}}
+      [:options "/api/stimulate"] {:status 200
+                                   :headers {"Access-Control-Allow-Origin" "*"
+                                             "Access-Control-Allow-Methods" "POST"
+                                             "Access-Control-Allow-Headers" "Content-Type"}}
 
-      {:status 404 :body "not found"})
+      ;; Dynamic routes (prefix matching)
+      (cond
+        (and (= :get request-method)
+             (str/starts-with? uri "/api/atoms/"))
+        (let [name (subs uri (count "/api/atoms/"))]
+          (handle-atom-lookup (java.net.URLDecoder/decode name "UTF-8")))
+
+        :else
+        {:status 404 :body "not found"}))
     (catch Exception e
       (log! (str "ERROR: " (.getMessage e)))
       (json-response {:error (.getMessage e)} :status 500))))
