@@ -641,6 +641,85 @@
       (is (string? (:result/val result)) "should describe revision"))))
 
 ;; =============================================================================
+;; Agent API Tests — direct atomspace interaction
+;; =============================================================================
+
+(println "Testing agent API\n")
+
+(deftest commit-observation-grounds-atoms
+  (let [space (as/make-space)
+        bank (att/make-bank)
+        obs {:concepts ["numerai" "model-stub" "submission"]
+             :relations [{:type :inherits :a "model-stub" :b "submission"}]
+             :confidence 0.8}
+        result (sem/commit-observation! space bank obs)]
+    (is (map? (:semantic result)) "should return semantic map")
+    (is (map? (:grounding result)) "should return grounding")
+    (is (some? (as/get-atom space "numerai")) "numerai should be in atomspace")
+    (is (some? (as/get-atom space "model-stub")) "model-stub should be in atomspace")
+    (is (pos? (:links (as/space-stats space))) "should have created links")))
+
+(deftest commit-observation-spreads-attention
+  (let [space (as/make-space)
+        bank (att/make-bank)]
+    (sem/commit-observation! space bank
+      {:concepts ["alpha" "beta"]
+       :relations [{:type :resembles :a "alpha" :b "beta"}]
+       :confidence 0.7})
+    (is (pos? (get-in @bank [:attention :alpha :av/sti] 0.0))
+        "alpha should have STI after observation")
+    (is (pos? (get-in @bank [:attention :beta :av/sti] 0.0))
+        "beta should have STI after observation")))
+
+(deftest query-atoms-returns-knowledge
+  (let [space (as/make-space)
+        bank (att/make-bank)]
+    (as/add-atom! space (as/concept "dog" (as/stv 0.9 0.7)))
+    (as/add-atom! space (as/concept "animal" (as/stv 0.8 0.6)))
+    (as/add-link! space (as/inheritance (as/concept "dog") (as/concept "animal")))
+    (att/stimulate! bank :dog 20.0)
+    (att/update-focus! bank)
+    (let [results (sem/query-atoms space bank ["dog" "unknown"]
+                    {:include-links? true :include-attention? true})]
+      (is (= 2 (count results)) "should return result per query")
+      (let [dog (first results)
+            unknown (second results)]
+        (is (:found? dog) "dog should be found")
+        (is (some? (:atom dog)) "dog should have atom data")
+        (is (seq (:links dog)) "dog should have links")
+        (is (pos? (:sti dog)) "dog should have STI")
+        (is (not (:found? unknown)) "unknown should not be found")))))
+
+(deftest stimulate-updates-focus
+  (let [bank (att/make-bank)]
+    (att/stimulate! bank :x 50.0)
+    (att/stimulate! bank :y 30.0)
+    (att/update-focus! bank)
+    (let [focus (att/focus-atoms bank)]
+      (is (seq focus) "should have atoms in focus")
+      (is (= :x (:key (first focus))) "x should be top of focus"))))
+
+(deftest multiple-observations-accumulate
+  (let [space (as/make-space)
+        bank (att/make-bank)]
+    ;; First observation
+    (sem/commit-observation! space bank
+      {:concepts ["hypothesis" "backtest"]
+       :relations [{:type :causes :a "backtest" :b "hypothesis"}]
+       :confidence 0.6})
+    (let [stats1 (as/space-stats space)
+          sti1 (get-in @bank [:attention :hypothesis :av/sti] 0.0)]
+      ;; Second observation with overlapping concepts
+      (sem/commit-observation! space bank
+        {:concepts ["hypothesis" "walk-forward"]
+         :relations [{:type :inherits :a "walk-forward" :b "backtest"}]
+         :confidence 0.8})
+      (let [stats2 (as/space-stats space)]
+        (is (> (:atoms stats2) (:atoms stats1)) "second obs should add new atoms")
+        (is (some? (as/get-atom space "walk-forward")) "new concept should be grounded")
+        (is (> (:links stats2) (:links stats1)) "second obs should add new links")))))
+
+;; =============================================================================
 ;; Property Tests — hand-rolled generative invariant checking
 ;; =============================================================================
 
