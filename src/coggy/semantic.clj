@@ -537,3 +537,50 @@ Never emit an empty structure. Guess if you must.")
        :diagnosis diagnosis
        :rescue rescue
        :metrics (metrics-summary)})))
+
+(defn commit-observation!
+  "Direct semantic commit — for structured data from external agents.
+   Skips extraction (data is already a map). Runs normalize → ground →
+   commit → spread → rescue. Returns same shape as process-semantic!."
+  [space bank observation]
+  (let [semantic (normalize-semantic observation)
+        concept-ground (ground-concepts space (or (:concepts semantic) []))
+        relation-ground (ground-relations space (or (:relations semantic) []))
+        diagnosis (diagnose-failure semantic concept-ground relation-ground bank)]
+
+    (record-metrics! semantic concept-ground relation-ground)
+    (when (= :budget-exhausted (:result/type diagnosis))
+      (swap! metrics update :budget-exhaustions (fnil inc 0)))
+
+    (when (and semantic (seq (:concepts semantic)))
+      (commit-semantics! space bank semantic concept-ground))
+
+    (let [rescue (when (and (not (ok? diagnosis)) (vacuum-detected? 2))
+                   (trigger-rescue! space bank diagnosis))]
+      {:semantic semantic
+       :grounding {:concepts concept-ground
+                   :relations relation-ground}
+       :diagnosis diagnosis
+       :rescue rescue
+       :metrics (metrics-summary)})))
+
+(defn query-atoms
+  "Query the atomspace for named concepts. Returns atom data, links, and attention.
+   opts: {:include-links? bool :include-attention? bool}"
+  [space bank concept-names opts]
+  (let [include-links? (:include-links? opts true)
+        include-attn?  (:include-attention? opts true)]
+    (mapv (fn [name]
+            (let [atom (as/get-atom space name)
+                  k (keyword name)]
+              (cond-> {:name name
+                       :found? (some? atom)}
+                atom (assoc :atom atom)
+                (and atom include-links?)
+                (assoc :links (as/query-links space
+                                (fn [l] (or (= k (att/link-source-key l))
+                                            (some #{k} (att/link-atom-keys l))))))
+                include-attn?
+                (assoc :sti (get-in @bank [:attention k :av/sti] 0.0)
+                       :in-focus? (boolean (att/in-focus? bank k))))))
+          concept-names)))
