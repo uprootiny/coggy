@@ -28,7 +28,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
-DIM='\033[2m'
 RESET='\033[0m'
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -88,8 +87,8 @@ get_pid() {
 
 instance_ports() {
   ensure_state_dir
-  ls -1 "${COGGY_DIR}"/state/coggy-*.pid 2>/dev/null \
-    | sed -E 's#.*/coggy-([0-9]+)\.pid#\1#' \
+  find "${COGGY_DIR}/state" -maxdepth 1 -name 'coggy-*.pid' -printf '%f\n' 2>/dev/null \
+    | sed -E 's#^coggy-([0-9]+)\.pid$#\1#' \
     | sort -n \
     | uniq
 }
@@ -266,7 +265,7 @@ cmd_status() {
     local state
     state=$(curl -sf --max-time 2 "http://localhost:${COGGY_PORT}/api/state" 2>/dev/null || echo "")
     if [ -n "$state" ]; then
-      local atoms links
+      local atoms
       atoms=$(echo "$state" | python3 -c "import sys,json; d=json.load(sys.stdin); a=d.get('atoms',{}); print(len(a) if isinstance(a,dict) else d.get('atom_count','?'))" 2>/dev/null || echo "?")
       ok "atoms: $atoms"
     else

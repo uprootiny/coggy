@@ -17,10 +17,12 @@ mkdir -p "$OUT_DIR"
 
 SESSIONS_FILE="${OUT_DIR}/sessions.sh"
 
-echo "#!/usr/bin/env bash" > "$SESSIONS_FILE"
-echo "# Generated: $(date -Iseconds)" >> "$SESSIONS_FILE"
-echo "# Restore with: bash $SESSIONS_FILE" >> "$SESSIONS_FILE"
-echo "" >> "$SESSIONS_FILE"
+{
+  echo "#!/usr/bin/env bash"
+  echo "# Generated: $(date -Iseconds)"
+  echo "# Restore with: bash $SESSIONS_FILE"
+  echo ""
+} > "$SESSIONS_FILE"
 
 saved=0
 
@@ -30,9 +32,11 @@ for sess in jacobson traceboard coggy; do
     continue
   fi
 
-  echo "" >> "$SESSIONS_FILE"
-  echo "# ── $sess ──" >> "$SESSIONS_FILE"
-  echo "tmux kill-session -t '$sess' 2>/dev/null || true" >> "$SESSIONS_FILE"
+  {
+    echo ""
+    echo "# ── $sess ──"
+    echo "tmux kill-session -t '$sess' 2>/dev/null || true"
+  } >> "$SESSIONS_FILE"
 
   first_window=true
   tmux list-windows -t "$sess" -F '#{window_index}|#{window_name}|#{window_layout}' | while IFS='|' read -r widx wname wlayout; do

@@ -33,7 +33,7 @@ case "${1:-help}" in
     # Inject source field if not present
     body="$2"
     if ! echo "$body" | grep -q '"source"'; then
-      body=$(echo "$body" | sed "s/}$/,\"source\":\"$COGGY_SOURCE\"}/")
+      body="${body%\}},\"source\":\"$COGGY_SOURCE\"}"
     fi
     post /api/observe "$body"
     ;;
