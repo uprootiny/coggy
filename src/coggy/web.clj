@@ -65,6 +65,7 @@
   --scroll-w:   6px;
   --font:       'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
   --radius:     4px;
+  --glow:       0 0 12px rgba(88,166,255,0.08);
 }
 
 html, body {
@@ -75,6 +76,41 @@ html, body {
   font-size: 13px;
   line-height: 1.6;
   overflow: hidden;
+}
+
+/* Subtle noise texture overlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.015;
+  background-image: url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\");
+}
+
+/* Value change pulse */
+@keyframes value-pulse {
+  0% { text-shadow: 0 0 8px currentColor; }
+  100% { text-shadow: none; }
+}
+.value-changed { animation: value-pulse 0.6s ease-out; }
+
+/* Breathing glow for live indicator */
+@keyframes breathe {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1.0; }
+}
+
+.live-dot {
+  display: inline-block;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: breathe 2.5s ease-in-out infinite;
+  margin-right: 6px;
+  vertical-align: middle;
+  box-shadow: 0 0 6px var(--green);
 }
 
 ::-webkit-scrollbar { width: var(--scroll-w); height: var(--scroll-w); }
@@ -89,8 +125,9 @@ html, body {
   align-items: center;
   gap: 0;
   height: 38px;
-  background: var(--surface);
+  background: linear-gradient(180deg, #1a2030 0%, var(--surface) 100%);
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03);
   padding: 0 12px;
   flex-shrink: 0;
 }
@@ -165,6 +202,11 @@ html, body {
   padding: 8px 10px;
   border-radius: var(--radius);
   max-width: 100%;
+  animation: msg-slide 0.3s ease-out;
+}
+@keyframes msg-slide {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .msg.user {
@@ -219,8 +261,9 @@ html, body {
   display: grid;
   grid-template-rows: auto auto;
   padding: 10px 16px 12px;
-  background: var(--surface);
+  background: linear-gradient(180deg, var(--surface) 0%, #131820 100%);
   border-top: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
   gap: 8px;
 }
 
@@ -284,9 +327,11 @@ option { background: var(--surface-2); }
   line-height: 1.5;
   min-height: 38px;
   max-height: 120px;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-#chat-input:focus { border-color: var(--accent); }
+#chat-input:focus { border-color: var(--accent); box-shadow: inset 0 2px 4px rgba(0,0,0,0.3), 0 0 8px rgba(88,166,255,0.1); }
 #chat-input::placeholder { color: var(--text-faint); }
 
 #send-btn {
@@ -309,9 +354,38 @@ option { background: var(--surface-2); }
 /* ── Right panel ── */
 #right {
   display: grid;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: 1fr 1fr 140px;
   overflow: hidden;
 }
+
+/* ── Event ticker ── */
+#event-ticker {
+  overflow-y: auto;
+  padding: 6px 10px;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.tick {
+  display: flex;
+  gap: 6px;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(45,55,72,0.3);
+  animation: tick-in 0.4s ease-out;
+}
+@keyframes tick-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.tick-ts { color: var(--text-faint); white-space: nowrap; font-size: 9px; }
+.tick-type { font-weight: 600; white-space: nowrap; }
+.tick-type.observe { color: var(--teal); }
+.tick-type.attention { color: var(--amber); }
+.tick-type.grounding { color: var(--accent); }
+.tick-type.rescue { color: var(--red); }
+.tick-type.domain { color: #a78bfa; }
+.tick-type.system { color: var(--text-dim); }
+.tick-detail { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Panel shells ── */
 .panel {
@@ -328,8 +402,9 @@ option { background: var(--surface-2); }
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  background: var(--surface);
+  background: linear-gradient(180deg, #1a2030 0%, var(--surface) 100%);
   border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 1px 2px rgba(0,0,0,0.2);
   flex-shrink: 0;
 }
 
@@ -408,10 +483,22 @@ option { background: var(--surface-2); }
   align-items: center;
   gap: 8px;
   padding: 3px 6px;
-  background: var(--surface-2);
+  background: linear-gradient(180deg, #1e2a3a 0%, var(--surface-2) 100%);
   border-radius: 3px;
   border: 1px solid var(--border-lo);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02), 0 1px 2px rgba(0,0,0,0.15);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
+.focus-item:hover {
+  border-color: var(--accent);
+  box-shadow: var(--glow), inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+@keyframes focus-appear {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.focus-item.new { animation: focus-appear 0.4s ease-out; }
 
 .focus-name { color: var(--text); font-size: 11px; }
 .focus-sti {
@@ -464,11 +551,14 @@ option { background: var(--surface-2); }
 }
 
 .metric-card {
-  background: var(--surface-2);
+  background: linear-gradient(180deg, #1e2a3a 0%, var(--surface-2) 100%);
   border: 1px solid var(--border-lo);
   border-radius: var(--radius);
   padding: 8px 10px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02), 0 1px 3px rgba(0,0,0,0.2);
+  transition: border-color 0.3s ease;
 }
+.metric-card:hover { border-color: var(--border); }
 
 .metric-card .m-label {
   font-size: 10px;
@@ -605,7 +695,7 @@ option { background: var(--surface-2); }
 
 <!-- Top ribbon -->
 <div id=\"ribbon\">
-  <span class=\"ribbon-logo\">coggy</span>
+  <span class=\"ribbon-logo\"><span class=\"live-dot\" id=\"pulse-dot\"></span>coggy</span>
   <span></span><!-- spacer -->
   <div class=\"ribbon-stat\">
     <span class=\"label\">model</span>
@@ -692,6 +782,17 @@ option { background: var(--surface-2); }
       </div>
       <div class=\"panel-body\" id=\"metrics-body\">
         <div class=\"empty-state\">loading…</div>
+      </div>
+    </div>
+
+    <!-- Event ticker -->
+    <div class=\"panel\">
+      <div class=\"panel-header\">
+        <span class=\"panel-title\"><span class=\"live-dot\"></span>events</span>
+        <span style=\"font-size:10px;color:var(--text-faint)\" id=\"event-count\">0</span>
+      </div>
+      <div id=\"event-ticker\" class=\"panel-body\">
+        <div class=\"empty-state\">waiting for events…</div>
       </div>
     </div>
 
@@ -905,9 +1006,13 @@ function renderRibbonFromState(s) {
   }
   if (s.atoms != null) {
     const atomCount = typeof s.atoms === 'object' ? Object.keys(s.atoms).length : s.atoms;
+    checkValueChange('r-atoms', atomCount);
     $('r-atoms').textContent = fmt(atomCount);
   }
-  if (s.links != null) $('r-links').textContent = fmt(s.links);
+  if (s.links != null) {
+    checkValueChange('r-links', s.links);
+    $('r-links').textContent = fmt(s.links);
+  }
 
   // hyle status
   if (s.hyle) {
@@ -1203,12 +1308,83 @@ $('chat-input').addEventListener('input', function() {
   this.style.height = Math.min(this.scrollHeight, 120) + 'px';
 });
 
+// ── Event ticker ──────────────────────────────────────────────────────────
+
+let lastEventTs = 0;
+let eventCount = 0;
+const prevValues = {};
+
+function pulseValue(el) {
+  el.classList.remove('value-changed');
+  void el.offsetWidth;
+  el.classList.add('value-changed');
+}
+
+function checkValueChange(id, newVal) {
+  if (prevValues[id] !== newVal && prevValues[id] !== undefined) {
+    const el = $(id);
+    if (el) pulseValue(el);
+  }
+  prevValues[id] = newVal;
+}
+
+function classifyEvent(ev) {
+  const t = ev.type || '';
+  if (t.includes('observe')) return 'observe';
+  if (t.includes('attention') || t.includes('stimulate')) return 'attention';
+  if (t.includes('ground')) return 'grounding';
+  if (t.includes('rescue') || t.includes('vacuum')) return 'rescue';
+  if (t.includes('domain')) return 'domain';
+  return 'system';
+}
+
+function addTick(ev) {
+  const el = $('event-ticker');
+  if (eventCount === 0) el.innerHTML = '';
+
+  const div = document.createElement('div');
+  div.className = 'tick';
+  const cls = classifyEvent(ev);
+  const ts = ev.ts ? new Date(ev.ts).toLocaleTimeString() : '';
+  const detail = ev.data ? JSON.stringify(ev.data).slice(0, 80) : (ev.msg || '');
+
+  div.innerHTML = '<span class=\"tick-ts\">' + esc(ts) + '</span>' +
+    '<span class=\"tick-type ' + cls + '\">' + esc(String(ev.type || 'event')) + '</span>' +
+    '<span class=\"tick-detail\">' + esc(detail) + '</span>';
+
+  el.insertBefore(div, el.firstChild);
+
+  // Keep max 30 ticks
+  while (el.children.length > 30) el.removeChild(el.lastChild);
+
+  eventCount++;
+  $('event-count').textContent = eventCount;
+}
+
+async function pollEvents() {
+  try {
+    const res = await fetch('/api/events');
+    const data = await res.json();
+    const events = data.events || [];
+    // Show new events
+    for (const ev of events) {
+      const evTs = ev.ts || 0;
+      if (evTs > lastEventTs) {
+        addTick(ev);
+        lastEventTs = evTs;
+      }
+    }
+  } catch (e) {}
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 
 async function init() {
   await refreshPanels();
-  // Poll every 15s
-  setInterval(refreshPanels, 15000);
+  await pollEvents();
+  // Panel refresh every 12s, events every 4s
+  setInterval(refreshPanels, 12000);
+  setInterval(pollEvents, 4000);
 }
 
 init();
