@@ -650,7 +650,12 @@ option { background: var(--surface-2); }
           <option value=\"legal\">legal</option>
           <option value=\"ibid-legal\">ibid-legal</option>
           <option value=\"forecast\">forecast</option>
-          <option value=\"plasmid\">plasmid</option>
+          <option value=\"bio\">bio</option>
+          <option value=\"unix\">unix</option>
+          <option value=\"research\">research</option>
+          <option value=\"balance\">balance</option>
+          <option value=\"study\">study</option>
+          <option value=\"accountability\">accountability</option>
         </select>
         <button class=\"ctrl-btn\" onclick=\"doRefresh()\" title=\"Refresh state\">refresh</button>
         <button class=\"ctrl-btn\" onclick=\"doBoot()\" title=\"Seed ontology\">boot</button>
