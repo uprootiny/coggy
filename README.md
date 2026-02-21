@@ -1,178 +1,168 @@
 # Coggy
 
-Coggy is an inspectable ontology-first reasoning harness with:
-- AtomSpace-style hypergraph memory (`atoms`, `links`, truth values)
-- Layered reasoning traces (`PARSE`, `GROUND`, `ATTEND`, `INFER`, `REFLECT`)
-- OpenRouter-backed LLM bridge with inspectable diagnostics
-- A stateful retro UI with live attention/focus visualization
+An inspectable ontology-first reasoning harness with a shared knowledge substrate.
 
-## Live UI (current session)
+Coggy maintains a hypergraph knowledge store (AtomSpace), an economic attention mechanism (ECAN), and a semantic pipeline that grounds LLM output into auditable structure. Other agents push observations, query knowledge, and stimulate attention via HTTP — no LLM roundtrip needed.
 
-- Local: `http://localhost:59683`
-- Public: `http://173.212.203.211:59683`
+**v0.1.0** | 131 tests | 485 assertions | 12 modules | 9 domain packs
 
-Health check:
+## Live
 
-```bash
-curl -sS http://173.212.203.211:59683/health
-```
+- **UI**: http://173.212.203.211:48420
+- **Canvas**: http://173.212.203.211:48420/canvas
+- **Health**: http://173.212.203.211:48420/health
 
 ## Quick Start
 
 ```bash
-cd ~/coggy
-nix-shell
-./coggy start
-./coggy status
+# Run tests
+bb test/coggy/atomspace_test.clj
+bb test/coggy/domain_test.clj
+bb test/coggy/bench_test.clj
+
+# Start server
+COGGY_PORT=48420 ./coggy start
+
+# Check health
+curl -sS http://localhost:48420/health
 ```
 
-Run on a novel high port:
+## Agent API
+
+Any agent can interact with coggy's knowledge substrate directly:
 
 ```bash
-COGGY_PORT=59683 HYLE_PORT=59684 ./coggy start
-COGGY_PORT=59683 HYLE_PORT=59684 ./coggy status
+# Push observations (concepts + relations + confidence)
+./scripts/coggy-client observe \
+  '{"concepts":["x","y"],"relations":[{"type":"inherits","a":"x","b":"y"}],"confidence":0.8}'
+
+# Query what coggy knows
+./scripts/coggy-client query '{"concepts":["x"]}'
+
+# Boost attention on concepts
+./scripts/coggy-client stimulate '{"atoms":{"x":15.0}}'
+
+# Read attentional focus
+./scripts/coggy-client focus
+
+# Look up a single atom
+./scripts/coggy-client atom coggy
 ```
 
-## OpenRouter Diagnostics (Inspectable)
+Or use curl directly:
 
 ```bash
-./coggy doctor --json
-curl -sS http://localhost:59683/api/openrouter/status | jq
+# Observe
+curl -X POST http://localhost:48420/api/observe \
+  -H 'Content-Type: application/json' \
+  -d '{"concepts":["alpha","beta"],"relations":[],"confidence":0.7,"source":"my-agent"}'
+
+# Query
+curl -X POST http://localhost:48420/api/query \
+  -H 'Content-Type: application/json' \
+  -d '{"concepts":["alpha"],"include_links":true}'
+
+# Focus
+curl http://localhost:48420/api/focus
+
+# Atom lookup
+curl http://localhost:48420/api/atoms/alpha
 ```
 
-Smoke tests (self-contained, includes temporary server + OpenRouter auth probe):
+## Domain Packs
+
+Seed expert knowledge into the atomspace:
+
+| Domain | Concepts | Relations | Focus |
+|--------|----------|-----------|-------|
+| legal | 13 | 5 | jurisdiction, precedent, burden-of-proof |
+| ibid-legal | 14 | 5 | IRAC chains, citation provenance |
+| forecast | 10 | 4 | base rates, calibration, resolution criteria |
+| bio | 10 | 5 | plasmid design, assay context, provenance |
+| unix | 16 | 8 | processes, services, config-as-data |
+| research | 15 | 8 | hypothesis-experiment-artifact cycles |
+| balance | 16 | 8 | energy, capacity, load vs recovery |
+| study | 16 | 8 | prerequisites, spaced review, confusion-as-signal |
+| accountability | 16 | 8 | commitment tracking, reconciliation cycles |
+
+Activate via API:
 
 ```bash
-./coggy smoke
+curl -X POST http://localhost:48420/api/domain \
+  -H 'Content-Type: application/json' \
+  -d '{"domain":"legal"}'
 ```
 
-## Snapshotting (Dump + Reload)
+## Architecture
 
-- Auto: rolling snapshot each turn (`state/session.edn`)
-- Auto: versioned snapshot every 3 turns (`state/snapshots/session-<ts>.edn`)
-- UI: `dump state`, `reload state`, command palette entries
-- API:
+```
+                  +-----------+
+ agents ------>   |  web.clj  |  <------ browser
+                  +-----+-----+
+                        |
+              +---------+---------+
+              |                   |
+        semantic.clj         repl.clj
+        (pipeline)           (session state)
+              |                   |
+    +---------+---------+         |
+    |         |         |         |
+atomspace  attention  domain    boot.clj
+   .clj      .clj      .clj   (seed ritual)
+    |         |
+    +---------+
+     (shared substrate)
+```
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /health | Health check |
+| GET | / | Chat UI |
+| GET | /canvas | Attention canvas |
+| GET | /api/state | Full state snapshot |
+| GET | /api/metrics | Semantic health metrics |
+| GET | /api/events | Recent event log |
+| GET | /api/focus | Attentional focus (top-N by STI) |
+| GET | /api/atoms/:name | Single atom + TV + links |
+| POST | /api/observe | Agent semantic observation |
+| POST | /api/query | Query atoms + links + attention |
+| POST | /api/stimulate | Nudge attention on atoms |
+| POST | /api/chat | Chat message (LLM roundtrip) |
+| POST | /api/domain | Activate domain pack |
+| POST | /api/boot | Re-seed core ontology |
+
+## Snapshots
 
 ```bash
-curl -sS -X POST http://localhost:59683/api/state/dump -H 'content-type: application/json' -d '{"mode":"versioned"}' | jq
-curl -sS http://localhost:59683/api/state/snapshots | jq
-curl -sS -X POST http://localhost:59683/api/state/load -H 'content-type: application/json' -d '{"latest":true}' | jq
+# Dump versioned snapshot
+curl -X POST http://localhost:48420/api/state/dump \
+  -H 'Content-Type: application/json' -d '{"mode":"versioned"}'
+
+# List snapshots
+curl http://localhost:48420/api/state/snapshots
+
+# Load latest
+curl -X POST http://localhost:48420/api/state/load \
+  -H 'Content-Type: application/json' -d '{"latest":true}'
 ```
 
-TUI commands:
-- `/dump`, `/dumpv`, `/load`, `/loadv`, `/snaps`
-
-## IBID Legal Feed Integration (Scaffold)
-
-- Default corpus: `resources/ibid/legal-corpus.edn`
-- UI panel: `IBID Feed` (ingest + run status)
-- API:
+## Operations
 
 ```bash
-curl -sS http://localhost:59683/api/ibid/status | jq
-curl -sS -X POST http://localhost:59683/api/ibid/ingest -H 'content-type: application/json' -d '{}' | jq
+./coggy start       # start server
+./coggy stop        # stop server
+./coggy restart     # restart
+./coggy status      # check status
+./coggy smoke       # smoke test
+./coggy fleet       # fleet status
+./coggy logs        # view logs
 ```
 
-Integrations catalog (feeds/predictions/legal/dashboard targets):
+## Documentation
 
-```bash
-curl -sS http://localhost:59683/api/integrations/catalog | jq
-```
-
-## Worked Example 1: Legal Reasoning Study Stub
-
-Goal: encode expert legal judgment as inspectable structures.
-
-Prompt:
-
-```text
-Given partially occluded case facts, identify likely controlling authority,
-what is missing, and confidence-calibrated next questions.
-```
-
-What to inspect:
-- `GROUND` rate against existing legal concepts
-- `INFER` deltas between turns
-- failure badges (`parser miss`, `grounding vacuum`)
-
-Useful API calls:
-
-```bash
-curl -sS http://localhost:59683/api/state | jq '.atoms | length'
-curl -sS http://localhost:59683/api/metrics | jq
-```
-
-## Worked Example 2: Plasmid/Peptide Knowledge Study Stub
-
-Goal: high-level provenance-first reasoning over conflicting evidence.
-
-Prompt:
-
-```text
-Compare two peptide design rationales with conflicting assay narratives.
-Show confidence and what additional evidence would reduce uncertainty.
-```
-
-Expected behavior:
-- explicit uncertainty handling in trace
-- conflict surfaced in `REFLECT`
-- context-aware attention shifts in `ATTEND`
-
-Important:
-- Keep this high-level and non-operational.
-- Do not use Coggy for wet-lab procedural generation.
-
-## UI Affordances
-
-- Trace depth toggles: `1/2/3`
-- Ghost toggles: `g`
-- Semantic emphasis: `s`
-- Help overlay: `?`
-- Attention froth canvas: draggable bubbles with spring return
-- Command palette: `/` or `Ctrl+K` with arrow-key navigation
-- Timeline replay: scrubber + live/replay modes
-
-## Deployment / Operations
-
-Start/stop:
-
-```bash
-./coggy start
-./coggy stop
-./coggy restart
-```
-
-Fleet/status:
-
-```bash
-./coggy fleet
-./coggy status
-```
-
-Logs:
-
-```bash
-./coggy logs
-```
-
-## Branch + Integration
-
-Current integration branch:
-
-- `integration/stateful-ux-highport`
-
-Push pattern:
-
-```bash
-git checkout integration/stateful-ux-highport
-git add -A
-git commit -m "..."
-git push
-```
-
-If conflicts arise:
-1. Create a short-lived integration branch from latest `main`.
-2. Merge feature branch into integration branch.
-3. Resolve conflicts there.
-4. Re-test (`./coggy smoke`, `bb test/coggy/atomspace_test.clj`).
-5. Merge integration branch back.
+- [CLAUDE.md](CLAUDE.md) — project guide + behavioral encoding
+- [DESIGN.md](DESIGN.md) — system design + v0.2.0 roadmap
+- [GUARANTEES.md](GUARANTEES.md) — test coverage + invariants
+- [CHANGELOG.md](CHANGELOG.md) — version history
