@@ -1900,13 +1900,7 @@ frame();
         hyle-port (or (System/getenv "HYLE_PORT")
                       (System/getProperty "HYLE_PORT")
                       "8420")
-        hyle-ok? (try
-                   (let [conn ^java.net.HttpURLConnection (.openConnection (java.net.URL. (str "http://localhost:" hyle-port "/health")))]
-                     (.setRequestMethod conn "GET")
-                     (.setConnectTimeout conn 1200)
-                     (.setReadTimeout conn 1200)
-                     (= 200 (.getResponseCode conn)))
-                   (catch Exception _ false))]
+        hyle-ok? (:ok (repl/http-get-json (str "http://localhost:" hyle-port "/health")))]
     (json-response {:atoms (:atoms space)
                     :links (count (:link-map space))
                     :attention (:attention bank)
@@ -2029,34 +2023,6 @@ frame();
                     :budget {:sti-funds (:sti-funds bank)
                              :sti-max (:sti-max bank)}})))
 
-(defn handle-integration-catalog []
-  (json-response
-   {:projects
-    [{:id "metaculus-middleware"
-      :kind "predictions"
-      :status "stubbed"
-      :hook "/api/domain forecast"
-      :note "time-bounded claims + calibration traces"}
-     {:id "ibid-legal"
-      :kind "legal reasoning"
-      :status "seeded"
-      :hook "/api/ibid/ingest"
-      :note "IRAC + citation-chain + adversarial counterarguments"}
-     {:id "authority-feeds"
-      :kind "feeds/corpora"
-      :status "planned"
-      :hook "resources/ibid/legal-corpus.edn"
-      :note "court and regulator record mirrors"}
-     {:id "hott-knowledge-layers"
-      :kind "formal methods"
-      :status "planned"
-      :hook "/api/domain formal"
-      :note "type-theoretic fragments as context partitions"}
-     {:id "ops-dashboard"
-      :kind "dashboards"
-      :status "active"
-      :hook "/api/openrouter/models + /api/metrics"
-      :note "latency/quota/budget and grounding health"}]}))
 
 ;; =============================================================================
 ;; Agent API Handlers — direct atomspace interaction for external agents
@@ -2129,7 +2095,6 @@ frame();
       [:get "/api/openrouter/status"] (json-response (llm/doctor :json? false :silent? true))
       [:get "/api/openrouter/models"] (json-response (llm/model-health-report))
       [:get "/api/ibid/status"] (handle-ibid-status)
-      [:get "/api/integrations/catalog"] (handle-integration-catalog)
       [:get "/api/smoke"]     (let [checks (bench/smoke-check (repl/space) (repl/bank))]
                                 (json-response (bench/smoke-summary checks)))
       [:get "/api/haywire"]   (json-response (bench/detect-haywire))
