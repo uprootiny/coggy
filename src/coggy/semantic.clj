@@ -505,64 +505,36 @@ Never emit an empty structure. Guess if you must.")
 ;; Full Pipeline
 ;; =============================================================================
 
+(defn- run-pipeline!
+  "Shared pipeline: normalize → ground → diagnose → commit → rescue."
+  [space bank semantic]
+  (let [concept-ground (ground-concepts space (or (:concepts semantic) []))
+        relation-ground (ground-relations space (or (:relations semantic) []))
+        diagnosis (diagnose-failure semantic concept-ground relation-ground bank)]
+    (record-metrics! semantic concept-ground relation-ground)
+    (when (= :budget-exhausted (:result/type diagnosis))
+      (swap! metrics update :budget-exhaustions (fnil inc 0)))
+    (when (and semantic (seq (:concepts semantic)))
+      (commit-semantics! space bank semantic concept-ground))
+    (let [rescue (when (and (not (ok? diagnosis)) (vacuum-detected? 2))
+                   (trigger-rescue! space bank diagnosis))]
+      {:semantic semantic
+       :grounding {:concepts concept-ground :relations relation-ground}
+       :diagnosis diagnosis :rescue rescue :metrics (metrics-summary)})))
+
 (defn process-semantic!
-  "Full semantic processing pipeline for an LLM response.
-   Returns {:semantic :grounding :diagnosis :rescue :metrics}."
+  "Full semantic processing pipeline for an LLM response."
   [space bank llm-response]
   (let [extract-result (extract-semantic-block llm-response)
         raw (if (ok? extract-result)
               (:result/val extract-result)
-              (fallback-semantic-from-text llm-response))
-        semantic (normalize-semantic raw)
-        concept-ground (ground-concepts space (or (:concepts semantic) []))
-        relation-ground (ground-relations space (or (:relations semantic) []))
-        diagnosis (diagnose-failure semantic concept-ground relation-ground bank)]
-
-    ;; Record metrics
-    (record-metrics! semantic concept-ground relation-ground)
-    (when (= :budget-exhausted (:result/type diagnosis))
-      (swap! metrics update :budget-exhaustions (fnil inc 0)))
-
-    ;; Commit if we have anything
-    (when (and semantic (seq (:concepts semantic)))
-      (commit-semantics! space bank semantic concept-ground))
-
-    ;; Rescue if needed (only on failure, not on healthy)
-    (let [rescue (when (and (not (ok? diagnosis)) (vacuum-detected? 2))
-                   (trigger-rescue! space bank diagnosis))]
-
-      {:semantic semantic
-       :grounding {:concepts concept-ground
-                   :relations relation-ground}
-       :diagnosis diagnosis
-       :rescue rescue
-       :metrics (metrics-summary)})))
+              (fallback-semantic-from-text llm-response))]
+    (run-pipeline! space bank (normalize-semantic raw))))
 
 (defn commit-observation!
-  "Direct semantic commit — for structured data from external agents.
-   Skips extraction (data is already a map). Runs normalize → ground →
-   commit → spread → rescue. Returns same shape as process-semantic!."
+  "Direct semantic commit for structured data from external agents."
   [space bank observation]
-  (let [semantic (normalize-semantic observation)
-        concept-ground (ground-concepts space (or (:concepts semantic) []))
-        relation-ground (ground-relations space (or (:relations semantic) []))
-        diagnosis (diagnose-failure semantic concept-ground relation-ground bank)]
-
-    (record-metrics! semantic concept-ground relation-ground)
-    (when (= :budget-exhausted (:result/type diagnosis))
-      (swap! metrics update :budget-exhaustions (fnil inc 0)))
-
-    (when (and semantic (seq (:concepts semantic)))
-      (commit-semantics! space bank semantic concept-ground))
-
-    (let [rescue (when (and (not (ok? diagnosis)) (vacuum-detected? 2))
-                   (trigger-rescue! space bank diagnosis))]
-      {:semantic semantic
-       :grounding {:concepts concept-ground
-                   :relations relation-ground}
-       :diagnosis diagnosis
-       :rescue rescue
-       :metrics (metrics-summary)})))
+  (run-pipeline! space bank (normalize-semantic observation)))
 
 (defn query-atoms
   "Query the atomspace for named concepts. Returns atom data, links, and attention.
