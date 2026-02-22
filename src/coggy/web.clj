@@ -726,7 +726,7 @@ option { background: var(--surface-2); }
   <div id=\"left\">
     <div id=\"messages\">
       <div class=\"msg system\">
-        <div class=\"msg-text\">coggy ready — type a message to begin</div>
+        <div class=\"msg-text\" id=\"welcome-msg\">loading…</div>
       </div>
     </div>
 
@@ -750,6 +750,7 @@ option { background: var(--surface-2); }
         <button class=\"ctrl-btn\" onclick=\"doRefresh()\" title=\"Refresh state\">refresh</button>
         <button class=\"ctrl-btn\" onclick=\"doBoot()\" title=\"Seed ontology\">boot</button>
         <button class=\"ctrl-btn\" onclick=\"doDump()\" title=\"Dump state snapshot\">dump</button>
+        <a class=\"ctrl-btn\" href=\"/canvas\" title=\"Attention canvas\" style=\"text-decoration:none\">canvas</a>
       </div>
       <div class=\"input-row\">
         <textarea id=\"chat-input\" rows=\"1\" placeholder=\"enter message — shift+enter for newline\"></textarea>
@@ -1382,6 +1383,35 @@ async function pollEvents() {
 async function init() {
   await refreshPanels();
   await pollEvents();
+
+  // Build a live welcome message from actual system state
+  try {
+    const [state, metrics, focus] = await Promise.all([
+      fetch('/api/state').then(r => r.json()),
+      fetch('/api/metrics').then(r => r.json()),
+      fetch('/api/focus').then(r => r.json())
+    ]);
+    const atoms = state.atoms ? Object.keys(state.atoms).length : 0;
+    const links = typeof state.links === 'number' ? state.links : 0;
+    const fCount = (focus.focus || []).length;
+    const topFocus = (focus.focus || []).slice(0, 3).map(f => {
+      const k = String(f.key || '').replace(/^:/, '');
+      return k;
+    }).join(', ');
+    const domains = ['legal', 'ibid-legal', 'forecast', 'bio', 'unix', 'research', 'balance', 'study', 'accountability'];
+
+    const wel = $('welcome-msg');
+    if (wel) {
+      wel.textContent = 'coggy v0.1.0 — ' + atoms + ' atoms, ' + links + ' links, ' +
+        fCount + ' in focus (' + topFocus + '). ' +
+        domains.length + ' domain packs available. ' +
+        'type a message or select a domain to begin.';
+    }
+  } catch (e) {
+    const wel = $('welcome-msg');
+    if (wel) wel.textContent = 'coggy ready — type a message to begin';
+  }
+
   // Panel refresh every 12s, events every 4s
   setInterval(refreshPanels, 12000);
   setInterval(pollEvents, 4000);
