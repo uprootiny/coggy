@@ -4,13 +4,22 @@ An inspectable ontology-first reasoning harness with a shared knowledge substrat
 
 Coggy maintains a hypergraph knowledge store (AtomSpace), an economic attention mechanism (ECAN), and a semantic pipeline that grounds LLM output into auditable structure. Other agents push observations, query knowledge, and stimulate attention via HTTP — no LLM roundtrip needed.
 
-**v0.1.0** | 131 tests | 485 assertions | 12 modules | 9 domain packs
+**v0.1.0+** | 129 tests | 480 assertions | 14 modules | 9 domain packs
 
 ## Live
 
 - **UI**: http://173.212.203.211:48420
 - **Canvas**: http://173.212.203.211:48420/canvas
 - **Health**: http://173.212.203.211:48420/health
+
+## UX Surface (v0.1.1)
+
+- Settings drawer in top ribbon (`gear` icon)
+- API key controls with masked value + source + set/clear/show-hide
+- Model selector ranked by live health and synced with main selector
+- Temperature slider (`0.0` to `1.5`) with live save
+- Max tokens slider (`256` to `4096`) with live save
+- Compact model health table (`ok/fail/cooldown/latency`)
 
 ## Quick Start
 
@@ -116,6 +125,8 @@ atomspace  attention  domain    boot.clj
 
 ## API Endpoints
 
+### Core
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | /health | Health check |
@@ -124,14 +135,57 @@ atomspace  attention  domain    boot.clj
 | GET | /api/state | Full state snapshot |
 | GET | /api/metrics | Semantic health metrics |
 | GET | /api/events | Recent event log |
+| GET | /api/logs | Server logs |
+| POST | /api/chat | Chat message (LLM roundtrip) |
+| POST | /api/boot | Re-seed core ontology |
+
+### Agent API
+
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | /api/focus | Attentional focus (top-N by STI) |
 | GET | /api/atoms/:name | Single atom + TV + links |
 | POST | /api/observe | Agent semantic observation |
 | POST | /api/query | Query atoms + links + attention |
 | POST | /api/stimulate | Nudge attention on atoms |
-| POST | /api/chat | Chat message (LLM roundtrip) |
 | POST | /api/domain | Activate domain pack |
-| POST | /api/boot | Re-seed core ontology |
+
+### Configuration
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/config | Current config (masked key, model, temp, max-tokens, health) |
+| POST | /api/config | Update config (api-key, model, temperature, max-tokens) |
+| POST | /api/model | Switch model |
+| GET | /api/openrouter/status | LLM provider diagnostics |
+| GET | /api/openrouter/models | Model health report |
+
+### Ontology & Integration
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/ontology/list | Saved ontologies |
+| POST | /api/ontology/save | Capture grounded subset |
+| POST | /api/ontology/load | Restore ontology |
+| GET | /api/ibid/status | IBID integration status |
+| POST | /api/ibid/ingest | Ingest legal corpus |
+
+### Diagnostics & Governance
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/smoke | Smoke test battery |
+| GET | /api/haywire | Haywire loop detection |
+| GET | /api/evidence | Evidence log |
+| GET | /api/fleet | Fleet aggregation (atomspace + deskfloor + tmux) |
+| GET | /api/assist/release-readiness | Release readiness score + verdict |
+| GET | /api/governance/export | Governance audit export |
+| GET | /api/assess/unroll | Write assessment bundle to docs/assessments |
+| GET | /api/onboarding/walkthrough | Guided walkthrough steps |
+| POST | /api/assist/suggest-next-assertions | Suggestion engine |
+| POST | /api/assist/nl-query | Natural language query translator |
+| POST | /api/infer/preview | Inference preview (dry run) |
+| POST | /api/assess/unroll | Write tagged assessment bundle |
 
 ## Snapshots
 
@@ -158,6 +212,7 @@ curl -X POST http://localhost:48420/api/state/load \
 ./coggy smoke       # smoke test
 ./coggy fleet       # fleet status
 ./coggy logs        # view logs
+# REPL: /assess release-candidate-1
 ```
 
 ## Documentation
@@ -166,3 +221,5 @@ curl -X POST http://localhost:48420/api/state/load \
 - [DESIGN.md](DESIGN.md) — system design + v0.2.0 roadmap
 - [GUARANTEES.md](GUARANTEES.md) — test coverage + invariants
 - [CHANGELOG.md](CHANGELOG.md) — version history
+- [docs/user-stories.md](docs/user-stories.md) — storyboard + scenario backlog
+- [docs/capability-scoreboard.md](docs/capability-scoreboard.md) — measured readiness/smoke scoring

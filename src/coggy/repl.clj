@@ -11,6 +11,8 @@
             [coggy.trace :as trace]
             [coggy.semantic :as sem]
             [coggy.bench :as bench]
+            [coggy.ontology :as ont]
+            [coggy.assess :as assess]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -477,6 +479,10 @@ RULES:
                     (println "  /load     — load runtime snapshot")
                     (println "  /loadv    — load latest versioned snapshot")
                     (println "  /snaps    — list versioned snapshots")
+                    (println "  /ont-save [id] — save grounded ad-hoc ontology")
+                    (println "  /ont-list  — list saved ontologies")
+                    (println "  /ont-load <id|path> — load saved ontology")
+                    (println "  /assess [tag] — unroll state assessment bundle")
                     (println "  /atoms    — list all atoms")
                     (println "  /metrics  — semantic grounding health")
                     (println "  /smoke    — run smoke check battery")
@@ -552,6 +558,40 @@ RULES:
                            (println (str "    " (:name s) "  " (:bytes s) " bytes"))))
                        (println "  snapshots: none")))
                    :continue)
+      "/ont-save" (do (let [id (or arg (str "adhoc-" (:turn @session)))
+                            r (ont/save! (space) (bank) {:id id :title id})]
+                        (if (:ok r)
+                          (println (str "  ontology saved: " (:id r)
+                                        " (" (:concept-count r) " concepts, "
+                                        (:link-count r) " links)"))
+                          (println (str "  ontology save failed: " (:error r))))
+                        :continue))
+      "/ont-list" (do (let [xs (ont/list-all)]
+                        (if (seq xs)
+                          (doseq [x (take 20 xs)]
+                            (println (str "  " (:id x) "  " (:concept-count x) "c/"
+                                          (:link-count x) "l  " (:path x))))
+                          (println "  no saved ontologies")))
+                      :continue)
+      "/ont-load" (do (if (str/blank? (or arg ""))
+                        (println "  usage: /ont-load <id|path>")
+                        (let [r (ont/load! (space) (bank) arg)]
+                          (if (:ok r)
+                            (println (str "  ontology loaded: " (:id r)
+                                          " (+"
+                                          (:added-atoms r) " atoms, +"
+                                          (:added-links r) " links)"))
+                            (println (str "  ontology load failed: " (:error r)))))
+                        )
+                      :continue)
+      "/assess" (do (let [r (assess/unroll! (space) (bank) {:tag arg})]
+                      (if (:ok r)
+                        (do
+                          (println (str "  assessment: " (:dir r)))
+                          (doseq [f (:files r)]
+                            (println (str "    - " f))))
+                        (println (str "  assessment failed: " (:error r))))
+                      :continue))
       "/atoms"  (do (doseq [[k v] (:atoms @(space))]
                       (println (str "  " (name (:atom/type v)) " " (name k)
                                     " (stv " (format "%.1f" (get-in v [:atom/tv :tv/strength]))

@@ -14,6 +14,8 @@
             [coggy.llm :as llm]
             [coggy.boot :as boot]
             [coggy.integrations.ibid :as ibid]
+            [coggy.ontology :as ont]
+            [coggy.assess :as assess]
             [coggy.repl :as repl]
             [coggy.trace :as trace]
             [coggy.semantic :as sem]
@@ -121,7 +123,7 @@ body::after {
 /* ── Top ribbon ── */
 #ribbon {
   display: grid;
-  grid-template-columns: auto 1fr repeat(5, auto);
+  grid-template-columns: auto 1fr repeat(5, auto) auto;
   align-items: center;
   gap: 0;
   height: 38px;
@@ -141,8 +143,6 @@ body::after {
   border-right: 1px solid var(--border-lo);
   margin-right: 16px;
 }
-
-.ribbon-spacer { flex: 1; }
 
 .ribbon-stat {
   display: flex;
@@ -689,6 +689,81 @@ option { background: var(--surface-2); }
   display: flex;
   align-items: center;
 }
+
+/* ── Settings drawer ── */
+#settings-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.5);
+  display: none; justify-content: flex-end;
+}
+#settings-overlay.open { display: flex; }
+
+#settings-drawer {
+  width: 320px; height: 100vh;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -4px 0 20px rgba(0,0,0,0.4);
+  overflow-y: auto;
+  padding: 0;
+  animation: drawer-in 0.2s ease-out;
+}
+@keyframes drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.settings-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, #1a2030 0%, var(--surface) 100%);
+  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.settings-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); }
+.settings-close {
+  background: none; border: 1px solid var(--border-lo); color: var(--text-faint);
+  font: inherit; font-size: 12px; padding: 2px 8px; border-radius: var(--radius); cursor: pointer;
+}
+.settings-close:hover { border-color: var(--accent); color: var(--accent); }
+
+.s-section { padding: 12px 14px; border-bottom: 1px solid var(--border-lo); }
+.s-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.s-row { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.s-hint { font-size: 10px; color: var(--text-faint); margin-top: 2px; }
+
+.s-input {
+  flex: 1; background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+  font-family: var(--font); font-size: 11px; padding: 5px 8px; border-radius: var(--radius); outline: none;
+}
+.s-input:focus { border-color: var(--accent); }
+.s-input.masked { color: var(--text-dim); letter-spacing: 0.1em; }
+
+.s-btn {
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim);
+  font-family: var(--font); font-size: 10px; padding: 4px 10px; border-radius: var(--radius); cursor: pointer;
+  white-space: nowrap;
+}
+.s-btn:hover { border-color: var(--accent); color: var(--text); }
+.s-btn.primary { background: var(--accent); border-color: var(--accent); color: #0d1117; font-weight: 600; }
+.s-btn.primary:hover { background: #79b8ff; }
+
+.s-range-wrap { display: flex; align-items: center; gap: 8px; width: 100%; }
+.s-range { flex: 1; accent-color: var(--accent); }
+.s-range-val { font-size: 11px; color: var(--accent); font-weight: 600; min-width: 36px; text-align: right; }
+
+.s-status { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.s-status .dot { width: 6px; height: 6px; border-radius: 50%; }
+.s-status .dot.ok { background: var(--green); }
+.s-status .dot.missing { background: var(--red); }
+.s-status .dot.env { background: var(--amber); }
+
+.gear-btn {
+  background: none; border: 1px solid var(--border-lo); color: var(--text-faint);
+  font-size: 14px; width: 28px; height: 24px; border-radius: var(--radius);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  margin-left: 8px;
+}
+.gear-btn:hover { border-color: var(--accent); color: var(--accent); }
 </style>
 </head>
 <body>
@@ -716,6 +791,63 @@ option { background: var(--surface-2); }
   <div class=\"ribbon-stat\">
     <span class=\"label\">links</span>
     <span class=\"value\" id=\"r-links\">—</span>
+  </div>
+  <button class=\"gear-btn\" onclick=\"toggleSettings()\" title=\"Settings\">&#9881;</button>
+</div>
+
+<!-- Settings drawer -->
+<div id=\"settings-overlay\" onclick=\"if(event.target===this)closeSettings()\">
+  <div id=\"settings-drawer\">
+    <div class=\"settings-header\">
+      <span class=\"settings-title\">settings</span>
+      <button class=\"settings-close\" onclick=\"closeSettings()\">&#215;</button>
+    </div>
+
+    <div class=\"s-section\">
+      <div class=\"s-label\">api key</div>
+      <div class=\"s-status\" id=\"key-status\">
+        <span class=\"dot missing\"></span>
+        <span>checking…</span>
+      </div>
+      <div class=\"s-row\" style=\"margin-top:8px\">
+        <input type=\"password\" class=\"s-input masked\" id=\"key-input\" placeholder=\"sk-or-v1-…\" autocomplete=\"off\">
+        <button class=\"s-btn\" onclick=\"toggleKeyVis()\" id=\"key-vis-btn\">show</button>
+      </div>
+      <div class=\"s-row\">
+        <button class=\"s-btn primary\" onclick=\"saveKey()\">set key</button>
+        <button class=\"s-btn\" onclick=\"clearKey()\">clear</button>
+      </div>
+      <div class=\"s-hint\">Key is stored in-memory only. Lost on restart.</div>
+    </div>
+
+    <div class=\"s-section\">
+      <div class=\"s-label\">model</div>
+      <div class=\"s-row\">
+        <select class=\"s-input\" id=\"s-model-select\"></select>
+      </div>
+      <div class=\"s-hint\" id=\"s-model-hint\">Select model or let auto-fallback choose.</div>
+    </div>
+
+    <div class=\"s-section\">
+      <div class=\"s-label\">temperature</div>
+      <div class=\"s-range-wrap\">
+        <input type=\"range\" class=\"s-range\" id=\"s-temp\" min=\"0\" max=\"1.5\" step=\"0.05\" value=\"0.7\">
+        <span class=\"s-range-val\" id=\"s-temp-val\">0.70</span>
+      </div>
+    </div>
+
+    <div class=\"s-section\">
+      <div class=\"s-label\">max tokens</div>
+      <div class=\"s-range-wrap\">
+        <input type=\"range\" class=\"s-range\" id=\"s-maxtok\" min=\"256\" max=\"4096\" step=\"128\" value=\"2048\">
+        <span class=\"s-range-val\" id=\"s-maxtok-val\">2048</span>
+      </div>
+    </div>
+
+    <div class=\"s-section\">
+      <div class=\"s-label\">model health</div>
+      <div id=\"s-model-health\"></div>
+    </div>
   </div>
 </div>
 
@@ -836,7 +968,6 @@ function esc(s) {
 // ── State ──────────────────────────────────────────────────────────────────
 
 let currentModel = '';
-let currentDomain = '';
 
 // ── Messages ───────────────────────────────────────────────────────────────
 
@@ -974,16 +1105,21 @@ async function doDump() {
 
 async function refreshPanels() {
   try {
-    const [stateData, metricsData, modelsData] = await Promise.all([
+    const [stateData, metricsData, configData] = await Promise.all([
       fetch('/api/state').then(r => r.json()),
       fetch('/api/metrics').then(r => r.json()),
-      fetch('/api/openrouter/models').then(r => r.json()).catch(() => null)
+      fetch('/api/config').then(r => r.json()).catch(() => null)
     ]);
 
     renderRibbonFromState(stateData);
     renderAtomspace(stateData);
-    renderMetrics(metricsData, modelsData);
-    if (modelsData) renderModelSelector(modelsData);
+    renderMetrics(metricsData, configData && configData.health);
+    if (configData) {
+      renderModelSelector(configData.health, configData.model);
+      if ($('settings-overlay').classList.contains('open')) {
+        renderSettingsFromConfig(configData);
+      }
+    }
   } catch (err) {
     console.error('refresh failed', err);
   }
@@ -1225,10 +1361,10 @@ function metricCard(label, value, cls, rate) {
 
 // ── Model selector ─────────────────────────────────────────────────────────
 
-function renderModelSelector(data) {
+function renderModelSelector(health, configuredModel) {
   const sel = $('model-select');
-  const configured = data.configured || currentModel;
-  const ranked = data.ranked || (data.models ? data.models.map(m => m.model) : []);
+  const configured = configuredModel || currentModel;
+  const ranked = health && health.ranked ? health.ranked : [];
 
   if (!ranked.length) return;
 
@@ -1252,21 +1388,45 @@ function renderModelSelector(data) {
   if (configured) sel.value = configured;
 }
 
+function clamp(val, lo, hi) {
+  return Math.min(hi, Math.max(lo, val));
+}
+
+function syncModelUi(model) {
+  if (!model) return;
+  currentModel = model;
+  $('r-model').textContent = shortModelName(model);
+  $('model-select').value = model;
+  $('s-model-select').value = model;
+}
+
+async function postConfigPatch(patch) {
+  const res = await fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch)
+  });
+  const data = await res.json();
+  if (!res.ok || data.ok === false) {
+    const reason = data.error || (data.errors && data.errors.join('; ')) || ('status ' + res.status);
+    throw new Error(reason);
+  }
+  return data.config || null;
+}
+
+async function applyModelSelection(model, announce) {
+  if (!model) return;
+  const cfg = await postConfigPatch({ model: model });
+  const selected = (cfg && cfg.model) || model;
+  syncModelUi(selected);
+  if (announce) addMsg('system', 'model → ' + shortModelName(selected));
+}
+
 $('model-select').addEventListener('change', async function() {
   const m = this.value;
   if (!m) return;
   try {
-    const res = await fetch('/api/model', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: m })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      currentModel = data.model;
-      $('r-model').textContent = shortModelName(data.model);
-      addMsg('system', 'model → ' + shortModelName(data.model));
-    }
+    await applyModelSelection(m, true);
   } catch (err) {
     addMsg('system', 'model switch failed: ' + err.message);
   }
@@ -1346,7 +1506,8 @@ function addTick(ev) {
   const div = document.createElement('div');
   div.className = 'tick';
   const cls = classifyEvent(ev);
-  const ts = ev.ts ? new Date(ev.ts).toLocaleTimeString() : '';
+  const tsNum = Number(ev.ts);
+  const ts = ev.ts ? new Date(Number.isFinite(tsNum) ? tsNum : ev.ts).toLocaleTimeString() : '';
   const detail = ev.data ? JSON.stringify(ev.data).slice(0, 80) : (ev.msg || '');
 
   div.innerHTML = '<span class=\"tick-ts\">' + esc(ts) + '</span>' +
@@ -1369,7 +1530,8 @@ async function pollEvents() {
     const events = data.events || [];
     // Show new events
     for (const ev of events) {
-      const evTs = ev.ts || 0;
+      const parsed = Number(ev.ts);
+      const evTs = Number.isFinite(parsed) ? parsed : (Date.parse(ev.ts) || 0);
       if (evTs > lastEventTs) {
         addTick(ev);
         lastEventTs = evTs;
@@ -1377,6 +1539,155 @@ async function pollEvents() {
     }
   } catch (e) {}
 }
+
+// ── Settings drawer ────────────────────────────────────────────────────────
+
+function toggleSettings() {
+  const el = $('settings-overlay');
+  if (el.classList.contains('open')) { closeSettings(); } else { openSettings(); }
+}
+function openSettings() {
+  $('settings-overlay').classList.add('open');
+  loadConfig();
+}
+function closeSettings() {
+  $('settings-overlay').classList.remove('open');
+}
+
+function renderSettingsFromConfig(data) {
+  if (!data) return;
+
+  const apiKey = data['api-key'] || {};
+  const src = apiKey.source || 'missing';
+  const present = Boolean(apiKey.present);
+  const masked = apiKey.masked || 'MISSING';
+  const dotCls = present ? (src === 'env' ? 'env' : 'ok') : 'missing';
+  $('key-status').innerHTML = '<span class=\"dot ' + dotCls + '\"></span><span>' +
+    (present ? esc(masked) + ' (' + src + ')' : 'no key set') + '</span>';
+
+  const sel = $('s-model-select');
+  const health = data.health || {};
+  const ranked = health.ranked || data['free-models'] || [];
+  sel.innerHTML = '';
+  for (const m of ranked) {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = shortModelName(m);
+    opt.title = m;
+    sel.appendChild(opt);
+  }
+  if (data.model) sel.value = data.model;
+  syncModelUi(data.model || currentModel);
+
+  const temp = data.temperature == null ? 0.7 : Number(data.temperature);
+  const maxTokens = data['max-tokens'] == null ? 2048 : Number(data['max-tokens']);
+  $('s-temp').value = temp;
+  $('s-temp-val').textContent = temp.toFixed(2);
+  $('s-maxtok').value = maxTokens;
+  $('s-maxtok-val').textContent = String(maxTokens);
+
+  let h = '';
+  const rows = health.models || [];
+  if (rows.length > 0) {
+    h += '<table class=\"model-health-table\"><thead><tr><th>model</th><th>ok</th><th>fail%</th><th>ms</th></tr></thead><tbody>';
+    for (const row of rows.slice(0, 6)) {
+      const isActive = row.model === data.model;
+      const cool = row['cooldown-ms'] > 0;
+      const failPct = row['fail-rate'] ? (row['fail-rate'] * 100).toFixed(0) + '%' : '0%';
+      const lat = row['avg-latency-ms'] ? Math.round(row['avg-latency-ms']) : '—';
+      const cls = cool ? 'cool' : (row.failures > 0 ? 'fail' : 'ok');
+      h += '<tr class=\"' + (isActive ? 'active-model' : '') + '\">' +
+        '<td title=\"' + esc(row.model) + '\">' + esc(shortModelName(row.model)) + '</td>' +
+        '<td class=\"' + cls + '\">' + (cool ? 'cool' : (row.successes > 0 ? 'ok' : '—')) + '</td>' +
+        '<td>' + failPct + '</td><td>' + lat + '</td></tr>';
+    }
+    h += '</tbody></table>';
+  }
+  $('s-model-health').innerHTML = h || '<div class=\"empty-state\">no model telemetry yet</div>';
+}
+
+async function loadConfig() {
+  try {
+    const data = await fetch('/api/config').then(r => r.json());
+    renderSettingsFromConfig(data);
+  } catch (e) {
+    console.error('config load failed', e);
+  }
+}
+
+async function saveKey() {
+  const key = $('key-input').value.trim();
+  if (!key) return;
+  try {
+    await postConfigPatch({ 'api-key': key });
+    $('key-input').value = '';
+    $('key-input').type = 'password';
+    $('key-vis-btn').textContent = 'show';
+    addMsg('system', 'API key set');
+    loadConfig();
+    refreshPanels();
+  } catch (e) {
+    addMsg('system', 'failed to set key: ' + e.message);
+  }
+}
+
+async function clearKey() {
+  try {
+    await postConfigPatch({ 'api-key': '' });
+    addMsg('system', 'API key cleared');
+    loadConfig();
+  } catch (e) {}
+}
+
+function toggleKeyVis() {
+  const inp = $('key-input');
+  const btn = $('key-vis-btn');
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = 'hide'; inp.classList.remove('masked'); }
+  else { inp.type = 'password'; btn.textContent = 'show'; inp.classList.add('masked'); }
+}
+
+$('s-temp').addEventListener('input', function() { $('s-temp-val').textContent = parseFloat(this.value).toFixed(2); });
+$('s-maxtok').addEventListener('input', function() { $('s-maxtok-val').textContent = this.value; });
+
+$('s-temp').addEventListener('change', async function() {
+  try {
+    const raw = parseFloat(this.value);
+    const temp = clamp(raw, 0.0, 1.5);
+    const cfg = await postConfigPatch({ temperature: temp });
+    if (cfg && cfg.temperature != null) {
+      const t = Number(cfg.temperature);
+      $('s-temp').value = t;
+      $('s-temp-val').textContent = t.toFixed(2);
+    }
+  } catch (e) {
+    addMsg('system', 'temperature update failed: ' + e.message);
+  }
+});
+
+$('s-maxtok').addEventListener('change', async function() {
+  try {
+    const raw = parseInt(this.value, 10);
+    const tokens = clamp(raw, 256, 4096);
+    const cfg = await postConfigPatch({ 'max-tokens': tokens });
+    if (cfg && cfg['max-tokens'] != null) {
+      const t = Number(cfg['max-tokens']);
+      $('s-maxtok').value = t;
+      $('s-maxtok-val').textContent = String(t);
+    }
+  } catch (e) {
+    addMsg('system', 'max tokens update failed: ' + e.message);
+  }
+});
+
+$('s-model-select').addEventListener('change', async function() {
+  const m = this.value;
+  if (!m) return;
+  try {
+    await applyModelSelection(m, true);
+  } catch (e) {
+    addMsg('system', 'model switch failed: ' + e.message);
+  }
+});
 
 // ── Init ───────────────────────────────────────────────────────────────────
 
@@ -1940,6 +2251,72 @@ frame();
 (defn handle-list-snapshots []
   (json-response {:snapshots (repl/list-snapshots)}))
 
+(declare config-snapshot)
+
+(defn handle-config-get []
+  (json-response (config-snapshot)))
+
+(defn parse-double-safe [v]
+  (try
+    (cond
+      (number? v) (double v)
+      (string? v) (Double/parseDouble (str/trim v))
+      :else nil)
+    (catch Exception _ nil)))
+
+(defn parse-long-safe [v]
+  (try
+    (cond
+      (integer? v) (long v)
+      (number? v) (long (Math/round (double v)))
+      (string? v) (Long/parseLong (str/trim v))
+      :else nil)
+    (catch Exception _ nil)))
+
+(defn clamp
+  [x lo hi]
+  (max lo (min hi x)))
+
+(defn config-snapshot []
+  (let [ks (llm/key-source)
+        cfg @llm/config]
+    {:api-key {:masked (llm/mask-key (:key ks))
+               :source (name (:source ks))
+               :present (boolean (:key ks))}
+     :model (:model cfg)
+     :temperature (:temperature cfg)
+     :max-tokens (:max-tokens cfg)
+     :free-models llm/free-models
+     :health (llm/model-health-report)}))
+
+(defn handle-config-set [body]
+  (let [temp-in (when (contains? body :temperature) (parse-double-safe (:temperature body)))
+        toks-in (when (contains? body :max-tokens) (parse-long-safe (:max-tokens body)))
+        model-in (when (contains? body :model) (str/trim (str (:model body))))
+        errors (cond-> []
+                 (and (contains? body :temperature) (nil? temp-in))
+                 (conj "temperature must be numeric")
+                 (and (contains? body :max-tokens) (nil? toks-in))
+                 (conj "max-tokens must be numeric")
+                 (and (contains? body :model) (str/blank? model-in))
+                 (conj "model must be non-empty"))
+        opts (cond-> {}
+               (contains? body :api-key) (assoc :api-key (str (:api-key body)))
+               (and (contains? body :model) (not (str/blank? model-in))) (assoc :model model-in)
+               (some? temp-in) (assoc :temperature (clamp temp-in 0.0 1.5))
+               (some? toks-in) (assoc :max-tokens (clamp toks-in 256 4096)))]
+    (if (seq errors)
+      (json-response {:ok false
+                      :errors errors
+                      :config (config-snapshot)}
+                     :status 400)
+      (do
+        (when (seq opts)
+          (llm/configure! opts)
+          (log! (str "config updated: " (keys opts))))
+        (json-response {:ok true
+                        :config (config-snapshot)})))))
+
 (defn handle-model [body]
   (if-let [m (:model body)]
     (do
@@ -1958,6 +2335,126 @@ frame();
 (defn handle-ibid-ingest [body]
   (let [p (:path body)
         out (ibid/ingest-corpus! (repl/space) (repl/bank) p)]
+    (json-response out :status (if (:ok out) 200 400))))
+
+(defn handle-ontology-list []
+  (json-response {:ontologies (ont/list-all)}))
+
+(defn handle-ontology-save [body]
+  (let [id (:id body)
+        title (:title body)
+        concepts (:concepts body)
+        include-focus? (not (false? (:include_focus body)))
+        max-concepts (or (:max_concepts body) 24)
+        min-sti (or (:min_sti body) 2.0)
+        min-confidence (or (:min_confidence body) 0.45)
+        out (ont/save! (repl/space) (repl/bank)
+                       {:id id
+                        :title title
+                        :concepts concepts
+                        :include-focus? include-focus?
+                        :max-concepts max-concepts
+                        :min-sti min-sti
+                        :min-confidence min-confidence})]
+    (json-response out :status (if (:ok out) 200 400))))
+
+(defn handle-ontology-load [body]
+  (let [id-or-path (or (:id body) (:path body))
+        out (if (seq (str id-or-path))
+              (ont/load! (repl/space) (repl/bank) id-or-path)
+              {:ok false :error "missing id or path"})]
+    (json-response out :status (if (:ok out) 200 400))))
+
+(defn handle-walkthrough []
+  (json-response
+   {:name "parse-ground-attend-infer-reflect"
+    :steps [{:step 1 :id "boot" :action "POST /api/boot"}
+            {:step 2 :id "activate-domain" :action "POST /api/domain {domain:\"ibid-legal\"}"}
+            {:step 3 :id "send-prompt" :action "POST /api/chat {message:\"analyze issue and authority\"}"}
+            {:step 4 :id "inspect-trace" :action "check PARSE/GROUND/ATTEND/INFER/REFLECT layers"}
+            {:step 5 :id "save-ontology" :action "POST /api/ontology/save {id:\"issue-authority-v1\"}"}
+            {:step 6 :id "replay" :action "use timeline scrubber or load snapshot"}]
+    :success-criteria ["grounding-rate >= 0.5"
+                       "trace includes at least one inferred relation"
+                       "saved ontology has >= 5 concepts"]}))
+
+(defn handle-assist-suggest [body]
+  (let [focus (att/focus-atoms (repl/bank))
+        top (take 3 focus)
+        mk (fn [f idx]
+             {:assertion (str ":inherits: " (name (:key f)) " -> reusable-concept-" idx)
+              :expected-grounding-gain (double (+ 0.08 (* 0.03 idx)))
+              :why "focus-weighted concept with existing grounding"})
+        suggestions (map-indexed (fn [idx f] (mk f (inc idx))) top)]
+    (json-response
+     {:ok true
+      :source "focus+grounding-heuristic"
+      :input-concepts (:concepts body)
+      :suggestions (vec suggestions)})))
+
+(defn handle-assist-nl-query [body]
+  (let [q (str/trim (str (or (:question body) "")))
+        tokens (->> (str/split (str/lower-case q) #"\s+")
+                    (map #(str/replace % #"[^a-z0-9-]" ""))
+                    (remove #(or (str/blank? %)
+                                 (< (count %) 3)))
+                    distinct
+                    (take 6)
+                    vec)]
+    (json-response
+     {:ok true
+      :question q
+      :query {:concepts tokens
+              :include_links true
+              :include_attention true}
+      :next "POST /api/query with this payload"})))
+
+(defn handle-infer-preview [body]
+  (let [mode (keyword (str/lower-case (str (or (:mode body) "forward"))))
+        before (as/space-stats (repl/space))
+        predicted-links (min 12 (max 2 (count (:focus @(repl/bank)))))
+        predicted-latency-ms (+ 90 (* predicted-links 16))
+        risk (if (> predicted-links 8) "medium" "low")]
+    (json-response
+     {:ok true
+      :mode (name mode)
+      :before before
+      :preview {:predicted-new-links predicted-links
+                :predicted-latency-ms predicted-latency-ms
+                :risk risk}
+      :note "preview-only; inference execution hook pending"})))
+
+(defn handle-release-readiness []
+  (let [smoke (bench/smoke-summary (bench/smoke-check (repl/space) (repl/bank)))
+        m (sem/metrics-summary)
+        score (double (/ (+ (* 0.5 (:score smoke))
+                            (* 0.3 (:parse-rate m))
+                            (* 0.2 (:avg-grounding-rate m)))
+                         1.0))]
+    (json-response
+     {:ok true
+      :score score
+      :verdict (cond
+                 (>= score 0.8) "go"
+                 (>= score 0.6) "conditional"
+                 :else "no-go")
+      :smoke smoke
+      :metrics m})))
+
+(defn handle-governance-export []
+  (json-response
+   {:ok true
+    :generated-at (System/currentTimeMillis)
+    :provenance {:events (repl/recent-events 50)
+                 :evidence (bench/recent-evidence 30)}
+    :metrics (sem/metrics-summary)
+    :focus (att/focus-atoms (repl/bank))
+    :note "No hidden CoT; export includes typed traces and confidence fields only."}))
+
+(defn handle-assessment-unroll [body]
+  (let [tag (:tag body)
+        root (:root body)
+        out (assess/unroll! (repl/space) (repl/bank) {:tag tag :root (or root assess/default-root)})]
     (json-response out :status (if (:ok out) 200 400))))
 
 (defn handle-fleet []
@@ -2092,9 +2589,15 @@ frame();
       [:get "/api/state/snapshots"] (handle-list-snapshots)
       [:get "/api/logs"]  (json-response (:logs @server-state))
       [:get "/api/metrics"] (handle-metrics)
+      [:get "/api/config"]  (handle-config-get)
       [:get "/api/openrouter/status"] (json-response (llm/doctor :json? false :silent? true))
       [:get "/api/openrouter/models"] (json-response (llm/model-health-report))
       [:get "/api/ibid/status"] (handle-ibid-status)
+      [:get "/api/ontology/list"] (handle-ontology-list)
+      [:get "/api/onboarding/walkthrough"] (handle-walkthrough)
+      [:get "/api/assist/release-readiness"] (handle-release-readiness)
+      [:get "/api/governance/export"] (handle-governance-export)
+      [:get "/api/assess/unroll"] (handle-assessment-unroll {:tag "api-get"})
       [:get "/api/smoke"]     (let [checks (bench/smoke-check (repl/space) (repl/bank))]
                                 (json-response (bench/smoke-summary checks)))
       [:get "/api/haywire"]   (json-response (bench/detect-haywire))
@@ -2116,12 +2619,26 @@ frame();
                                                    (seq (str p)) (repl/load-state! p)
                                                    latest? (repl/load-latest-snapshot!)
                                                    :else (repl/load-state!))))
+      [:post "/api/config"] (let [body (json/parse-string (slurp body) true)]
+                              (handle-config-set body))
       [:post "/api/model"] (let [body (json/parse-string (slurp body) true)]
                              (handle-model body))
       [:post "/api/domain"] (let [body (json/parse-string (slurp body) true)]
                               (handle-domain body))
       [:post "/api/ibid/ingest"] (let [body (json/parse-string (slurp body) true)]
                                    (handle-ibid-ingest body))
+      [:post "/api/ontology/save"] (let [body (json/parse-string (slurp body) true)]
+                                     (handle-ontology-save body))
+      [:post "/api/ontology/load"] (let [body (json/parse-string (slurp body) true)]
+                                     (handle-ontology-load body))
+      [:post "/api/assist/suggest-next-assertions"] (let [body (json/parse-string (slurp body) true)]
+                                                      (handle-assist-suggest body))
+      [:post "/api/assist/nl-query"] (let [body (json/parse-string (slurp body) true)]
+                                       (handle-assist-nl-query body))
+      [:post "/api/infer/preview"] (let [body (json/parse-string (slurp body) true)]
+                                     (handle-infer-preview body))
+      [:post "/api/assess/unroll"] (let [body (json/parse-string (slurp body) true)]
+                                     (handle-assessment-unroll body))
 
       ;; Agent API
       [:get "/api/focus"]    (handle-focus)
@@ -2132,25 +2649,16 @@ frame();
       [:post "/api/stimulate"] (let [body (json/parse-string (slurp body) true)]
                                  (handle-stimulate body))
 
-      [:options "/api/chat"] {:status 200
-                              :headers {"Access-Control-Allow-Origin" "*"
-                                        "Access-Control-Allow-Methods" "POST"
-                                        "Access-Control-Allow-Headers" "Content-Type"}}
-      [:options "/api/observe"] {:status 200
-                                 :headers {"Access-Control-Allow-Origin" "*"
-                                           "Access-Control-Allow-Methods" "POST"
-                                           "Access-Control-Allow-Headers" "Content-Type"}}
-      [:options "/api/query"] {:status 200
-                                :headers {"Access-Control-Allow-Origin" "*"
-                                          "Access-Control-Allow-Methods" "POST"
-                                          "Access-Control-Allow-Headers" "Content-Type"}}
-      [:options "/api/stimulate"] {:status 200
-                                   :headers {"Access-Control-Allow-Origin" "*"
-                                             "Access-Control-Allow-Methods" "POST"
-                                             "Access-Control-Allow-Headers" "Content-Type"}}
-
       ;; Dynamic routes (prefix matching)
       (cond
+        ;; CORS preflight for any /api/ path
+        (and (= :options request-method)
+             (str/starts-with? uri "/api/"))
+        {:status 200
+         :headers {"Access-Control-Allow-Origin" "*"
+                   "Access-Control-Allow-Methods" "GET, POST, OPTIONS"
+                   "Access-Control-Allow-Headers" "Content-Type"}}
+
         (and (= :get request-method)
              (str/starts-with? uri "/api/atoms/"))
         (let [name (subs uri (count "/api/atoms/"))]
