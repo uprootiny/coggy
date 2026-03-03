@@ -25,9 +25,11 @@ case "${cmd}" in
     exec bb "${ROOT_DIR}/src/coggy/main.clj" "${cmd}" "$@"
     ;;
   test)
-    exec bb "${ROOT_DIR}/test/coggy/atomspace_test.clj" "$@"
+    bb "${ROOT_DIR}/test/coggy/atomspace_test.clj" "$@" && \
+    bb "${ROOT_DIR}/test/coggy/domain_test.clj" "$@" && \
+    bb "${ROOT_DIR}/test/coggy/bench_test.clj" "$@"
     ;;
-  cockpit|up|start|stop|restart|status|fleet|chat|smoke|logs|bench)
+  cockpit|up|start|stop|restart|status|probe|fleet|chat|smoke|logs|bench)
     exec "${CTL}" "${cmd}" "$@"
     ;;
   ctl)
@@ -35,7 +37,7 @@ case "${cmd}" in
     ;;
   help|-h|--help)
     cat <<'EOF'
-Usage: coggy [repl|serve|boot|doctor|connect|test|up|start|stop|restart|status|fleet|chat|smoke|logs|cockpit|bench|ctl]
+Usage: coggy [repl|serve|boot|doctor|connect|test|up|start|stop|restart|status|probe|fleet|chat|smoke|logs|cockpit|bench|ctl]
 
 Examples:
   coggy

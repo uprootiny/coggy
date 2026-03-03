@@ -21,6 +21,8 @@ COGGY_PID_FILE="${COGGY_DIR}/state/coggy-${COGGY_PORT}.pid"
 COGGY_LOG_FILE="${COGGY_DIR}/state/coggy-${COGGY_PORT}.log"
 COGGY_SESSION="${COGGY_SESSION:-coggy-${COGGY_PORT}}"
 HYLE_PORT="${HYLE_PORT:-8420}"
+COGGY_START_STABLE_SECS="${COGGY_START_STABLE_SECS:-4}"
+COGGY_PUBLIC_HOST="${COGGY_PUBLIC_HOST:-}"
 
 # Colors
 RED='\033[0;31m'
@@ -186,7 +188,25 @@ cmd_start() {
   local tries=0
   while [ $tries -lt 15 ]; do
     if health_ok || state_ok; then
-      ok "coggy started (pid $pid, port ${COGGY_PORT})"
+      # Stabilization window: catch immediate crash loops after initial bind.
+      local stable=0
+      while [ $stable -lt "$COGGY_START_STABLE_SECS" ]; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+          fail "coggy exited during stabilization window"
+          rm -f "$COGGY_PID_FILE"
+          tail -30 "$COGGY_LOG_FILE" 2>/dev/null | sed 's/^/  /'
+          return 1
+        fi
+        if ! health_ok && ! state_ok; then
+          fail "coggy became unhealthy during stabilization window"
+          rm -f "$COGGY_PID_FILE"
+          tail -30 "$COGGY_LOG_FILE" 2>/dev/null | sed 's/^/  /'
+          return 1
+        fi
+        sleep 1
+        stable=$((stable + 1))
+      done
+      ok "coggy started (pid $pid, port ${COGGY_PORT}, stable ${COGGY_START_STABLE_SECS}s)"
       return 0
     fi
     sleep 1
@@ -349,6 +369,37 @@ import sys, json
 d = json.load(sys.stdin)
 print(d.get("content", d.get("error", d)))
 ' 2>/dev/null || echo "$resp"
+}
+
+# ── Probe ─────────────────────────────────────────────────────
+
+cmd_probe() {
+  local public_host="${1:-$COGGY_PUBLIC_HOST}"
+  local local_url="http://127.0.0.1:${COGGY_PORT}/health"
+  local public_url=""
+  if [ -n "$public_host" ]; then
+    public_url="http://${public_host}:${COGGY_PORT}/health"
+  fi
+
+  echo -e "${BOLD}${CYAN}COGGY PROBE${RESET}"
+  echo "────────────────────────────────"
+  echo "local:  ${local_url}"
+  if curl -sf --max-time 2 "$local_url" >/dev/null 2>&1; then
+    ok "local health reachable"
+  else
+    fail "local health unreachable"
+  fi
+
+  if [ -n "$public_url" ]; then
+    echo "public: ${public_url}"
+    if curl -sf --max-time 3 "$public_url" >/dev/null 2>&1; then
+      ok "public health reachable"
+    else
+      warn "public health unreachable"
+    fi
+  else
+    warn "public host not set (pass as arg or set COGGY_PUBLIC_HOST)"
+  fi
 }
 
 # ── Smoke Test ───────────────────────────────────────────────
@@ -521,6 +572,7 @@ case "${1:-help}" in
   stop)     cmd_stop ;;
   restart)  cmd_restart ;;
   status)   cmd_status ;;
+  probe)    shift; cmd_probe "$@" ;;
   fleet)    cmd_fleet ;;
   chat)     shift; cmd_chat "$@" ;;
   smoke)    cmd_smoke ;;
@@ -529,13 +581,14 @@ case "${1:-help}" in
   cockpit)  cmd_cockpit ;;
   bench)    log "bench not yet implemented" ;;
   help|*)
-    echo "Usage: coggyctl {up|start|stop|restart|status|fleet|chat|smoke|doctor|logs|cockpit|bench}"
+    echo "Usage: coggyctl {up|start|stop|restart|status|probe|fleet|chat|smoke|doctor|logs|cockpit|bench}"
     echo ""
     echo "  up       — full cold start (doctor + start + smoke + cockpit)"
     echo "  start    — start web middleware"
     echo "  stop     — stop cleanly"
     echo "  restart  — stop + start"
     echo "  status   — show current state"
+    echo "  probe    — local/public health probe"
     echo "  fleet    — show all known coggy instances"
     echo "  chat     — send a message to a coggy instance by port"
     echo "  smoke    — run smoke tests"

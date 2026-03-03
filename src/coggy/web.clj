@@ -307,6 +307,7 @@ option { background: var(--surface-2); }
 
 .ctrl-btn:hover { border-color: var(--accent); color: var(--text); }
 .ctrl-btn.danger:hover { border-color: var(--red); color: var(--red); }
+.ctrl-btn.active { border-color: var(--accent); color: var(--text); box-shadow: var(--glow); }
 
 .input-row {
   display: grid;
@@ -365,6 +366,14 @@ option { background: var(--surface-2); }
   font-size: 10px;
   line-height: 1.5;
 }
+
+/* Attention-respecting modes */
+body.calm .live-dot { animation: none; opacity: .65; box-shadow: none; }
+body.calm .typing-dots span { animation: none !important; opacity: .7; }
+body.calm .msg, body.calm .panel, body.calm #input-bar { transition: none !important; }
+body.reading #main { grid-template-columns: 1fr; }
+body.reading #right { display: none; }
+body.reading .msg { max-width: 78ch; }
 
 .tick {
   display: flex;
@@ -882,6 +891,9 @@ option { background: var(--surface-2); }
         <button class=\"ctrl-btn\" onclick=\"doRefresh()\" title=\"Refresh state\">refresh</button>
         <button class=\"ctrl-btn\" onclick=\"doBoot()\" title=\"Seed ontology\">boot</button>
         <button class=\"ctrl-btn\" onclick=\"doDump()\" title=\"Dump state snapshot\">dump</button>
+        <button class=\"ctrl-btn\" id=\"toggle-refresh\" title=\"Pause/resume automatic refresh\">auto: on</button>
+        <button class=\"ctrl-btn\" id=\"toggle-calm\" title=\"Reduce motion and noise\">calm: off</button>
+        <button class=\"ctrl-btn\" id=\"toggle-reading\" title=\"Focus conversation only\">reading: off</button>
         <a class=\"ctrl-btn\" href=\"/canvas\" title=\"Attention canvas\" style=\"text-decoration:none\">canvas</a>
       </div>
       <div class=\"input-row\">
@@ -968,6 +980,31 @@ function esc(s) {
 // ── State ──────────────────────────────────────────────────────────────────
 
 let currentModel = '';
+let autoRefresh = true;
+let calmMode = false;
+let readingMode = false;
+let pollPanelsTimer = null;
+let pollEventsTimer = null;
+
+function loadUxPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem('coggy.ux') || '{}');
+    autoRefresh = p.autoRefresh !== false;
+    calmMode = !!p.calmMode;
+    readingMode = !!p.readingMode;
+  } catch (_) {}
+}
+function saveUxPrefs() {
+  try { localStorage.setItem('coggy.ux', JSON.stringify({autoRefresh, calmMode, readingMode})); } catch (_) {}
+}
+function applyUxModes() {
+  document.body.classList.toggle('calm', calmMode);
+  document.body.classList.toggle('reading', readingMode);
+  const ar = $('toggle-refresh'), cm = $('toggle-calm'), rm = $('toggle-reading');
+  if (ar) { ar.textContent = 'auto: ' + (autoRefresh ? 'on' : 'off'); ar.classList.toggle('active', autoRefresh); }
+  if (cm) { cm.textContent = 'calm: ' + (calmMode ? 'on' : 'off'); cm.classList.toggle('active', calmMode); }
+  if (rm) { rm.textContent = 'reading: ' + (readingMode ? 'on' : 'off'); rm.classList.toggle('active', readingMode); }
+}
 
 // ── Messages ───────────────────────────────────────────────────────────────
 
@@ -1469,6 +1506,14 @@ $('chat-input').addEventListener('input', function() {
   this.style.height = Math.min(this.scrollHeight, 120) + 'px';
 });
 
+document.addEventListener('keydown', function(e) {
+  if (!(e.altKey || e.metaKey)) return;
+  const k = (e.key || '').toLowerCase();
+  if (k === 'r') { e.preventDefault(); toggleAutoRefresh(); }
+  if (k === 'm') { e.preventDefault(); toggleCalmMode(); }
+  if (k === 'l') { e.preventDefault(); toggleReadingMode(); }
+});
+
 // ── Event ticker ──────────────────────────────────────────────────────────
 
 let lastEventTs = 0;
@@ -1538,6 +1583,33 @@ async function pollEvents() {
       }
     }
   } catch (e) {}
+}
+
+function startPolling() {
+  if (pollPanelsTimer) clearInterval(pollPanelsTimer);
+  if (pollEventsTimer) clearInterval(pollEventsTimer);
+  if (!autoRefresh) return;
+  pollPanelsTimer = setInterval(refreshPanels, 12000);
+  pollEventsTimer = setInterval(pollEvents, 4000);
+}
+function toggleAutoRefresh() {
+  autoRefresh = !autoRefresh;
+  saveUxPrefs();
+  applyUxModes();
+  startPolling();
+  addMsg('system', 'auto refresh → ' + (autoRefresh ? 'on' : 'off'));
+}
+function toggleCalmMode() {
+  calmMode = !calmMode;
+  saveUxPrefs();
+  applyUxModes();
+  addMsg('system', 'calm mode → ' + (calmMode ? 'on' : 'off'));
+}
+function toggleReadingMode() {
+  readingMode = !readingMode;
+  saveUxPrefs();
+  applyUxModes();
+  addMsg('system', 'reading mode → ' + (readingMode ? 'on' : 'off'));
 }
 
 // ── Settings drawer ────────────────────────────────────────────────────────
@@ -1692,6 +1764,11 @@ $('s-model-select').addEventListener('change', async function() {
 // ── Init ───────────────────────────────────────────────────────────────────
 
 async function init() {
+  loadUxPrefs();
+  applyUxModes();
+  if ($('toggle-refresh')) $('toggle-refresh').addEventListener('click', toggleAutoRefresh);
+  if ($('toggle-calm')) $('toggle-calm').addEventListener('click', toggleCalmMode);
+  if ($('toggle-reading')) $('toggle-reading').addEventListener('click', toggleReadingMode);
   await refreshPanels();
   await pollEvents();
 
@@ -1716,16 +1793,16 @@ async function init() {
       wel.textContent = 'coggy v0.1.0 — ' + atoms + ' atoms, ' + links + ' links, ' +
         fCount + ' in focus (' + topFocus + '). ' +
         domains.length + ' domain packs available. ' +
-        'type a message or select a domain to begin.';
+        'type a message or select a domain to begin. ' +
+        'shortcuts: Alt+R auto, Alt+M calm, Alt+L reading.';
     }
   } catch (e) {
     const wel = $('welcome-msg');
     if (wel) wel.textContent = 'coggy ready — type a message to begin';
   }
 
-  // Panel refresh every 12s, events every 4s
-  setInterval(refreshPanels, 12000);
-  setInterval(pollEvents, 4000);
+  // Attention-respecting polling (can be paused).
+  startPolling();
 }
 
 init();

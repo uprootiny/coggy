@@ -209,6 +209,7 @@ curl -X POST http://localhost:48420/api/state/load \
 ./coggy stop        # stop server
 ./coggy restart     # restart
 ./coggy status      # check status
+./coggy probe 173.212.203.211  # local/public reachability probe
 ./coggy smoke       # smoke test
 ./coggy fleet       # fleet status
 ./coggy logs        # view logs

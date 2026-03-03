@@ -4,5 +4,6 @@
 target/
 state/
 !state/tmux/
+docs/assessments/
 *.swp
 *~
