@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Legal inference",
+    "category": "Legal",
+    "input": "penguin is-a bird",
+    "goal": "Ground a novel animal in policy-linked inheritance."
+  },
+  {
+    "name": "Mathematical injunction",
+    "category": "Math",
+    "input": "cat is-a mammal",
+    "goal": "Verify class memberships and propagate STI across the chain."
+  },
+  {
+    "name": "Formal chain",
+    "category": "Formal",
+    "input": "inheritance chain",
+    "goal": "Connect an abstract list link into the established ontology."
+  },
+  {
+    "name": "Smoke trace",
+    "category": "Smoke",
+    "input": "cat likes fish",
+    "goal": "Ensure parser+pln maintain focus when new evaluation appears."
+  }
+]

@@ -27,7 +27,11 @@ pub fn run_tikkun(space: &AtomSpace) -> TikkunReport {
     });
 
     // 2. all truth values valid
-    let invalid_tvs = space.all_atoms_sorted().iter().filter(|a| !a.tv.is_valid()).count();
+    let invalid_tvs = space
+        .all_atoms_sorted()
+        .iter()
+        .filter(|a| !a.tv.is_valid())
+        .count();
     checks.push(TikkunCheck {
         name: "tvs-valid".into(),
         passed: invalid_tvs == 0,
@@ -85,5 +89,94 @@ pub fn run_tikkun(space: &AtomSpace) -> TikkunReport {
     TikkunReport {
         checks,
         all_healthy,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::atom::*;
+    use crate::atomspace::AtomSpace;
+    use crate::ontology;
+
+    #[test]
+    fn healthy_ontology_passes() {
+        let mut space = AtomSpace::new();
+        ontology::load_base_ontology(&mut space);
+        let report = run_tikkun(&space);
+        assert!(report.all_healthy);
+        assert_eq!(report.checks.len(), 5);
+    }
+
+    #[test]
+    fn empty_space_fails_atoms_check() {
+        let space = AtomSpace::new();
+        let report = run_tikkun(&space);
+        assert!(!report.all_healthy);
+        assert!(!report.checks[0].passed);
+    }
+
+    #[test]
+    fn single_type_fails_diversity() {
+        let mut space = AtomSpace::new();
+        space.add_node(AtomType::ConceptNode, "cat", TruthValue::new(0.9, 0.8));
+        let report = run_tikkun(&space);
+        let has_types = report
+            .checks
+            .iter()
+            .find(|c| c.name == "has-types")
+            .unwrap();
+        assert!(!has_types.passed);
+    }
+
+    #[test]
+    fn two_types_passes_diversity() {
+        let mut space = AtomSpace::new();
+        let (a, _) = space.add_node(AtomType::ConceptNode, "cat", TruthValue::new(0.9, 0.8));
+        let (b, _) = space.add_node(AtomType::ConceptNode, "mammal", TruthValue::new(0.9, 0.8));
+        space.add_link(
+            AtomType::InheritanceLink,
+            vec![a, b],
+            TruthValue::new(0.95, 0.9),
+        );
+        let report = run_tikkun(&space);
+        let has_types = report
+            .checks
+            .iter()
+            .find(|c| c.name == "has-types")
+            .unwrap();
+        assert!(has_types.passed);
+    }
+
+    #[test]
+    fn valid_tvs_pass() {
+        let mut space = AtomSpace::new();
+        space.add_node(AtomType::ConceptNode, "cat", TruthValue::new(0.9, 0.8));
+        let report = run_tikkun(&space);
+        let tvs = report
+            .checks
+            .iter()
+            .find(|c| c.name == "tvs-valid")
+            .unwrap();
+        assert!(tvs.passed);
+    }
+
+    #[test]
+    fn no_orphans_in_well_formed_space() {
+        let mut space = AtomSpace::new();
+        let (a, _) = space.add_node(AtomType::ConceptNode, "cat", TruthValue::new(0.9, 0.8));
+        let (b, _) = space.add_node(AtomType::ConceptNode, "mammal", TruthValue::new(0.9, 0.8));
+        space.add_link(
+            AtomType::InheritanceLink,
+            vec![a, b],
+            TruthValue::new(0.95, 0.9),
+        );
+        let report = run_tikkun(&space);
+        let orphans = report
+            .checks
+            .iter()
+            .find(|c| c.name == "no-orphans")
+            .unwrap();
+        assert!(orphans.passed);
     }
 }

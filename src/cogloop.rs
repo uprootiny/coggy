@@ -54,15 +54,9 @@ pub fn run(space: &mut AtomSpace, input: &str, ecan_config: &EcanConfig) -> CogL
                         ont_links.len()
                     ));
                 } else if pa.is_new {
-                    ground_lines.push(format!(
-                        "\u{25cb} ({}) NOT FOUND \u{2014} 0 links",
-                        pa.desc
-                    ));
+                    ground_lines.push(format!("\u{25cb} ({}) NOT FOUND \u{2014} 0 links", pa.desc));
                 } else {
-                    ground_lines.push(format!(
-                        "\u{2295} ({}) EXISTING \u{2014} matched",
-                        pa.desc
-                    ));
+                    ground_lines.push(format!("\u{2295} ({}) EXISTING \u{2014} matched", pa.desc));
                 }
             }
         }
@@ -147,7 +141,11 @@ pub fn run(space: &mut AtomSpace, input: &str, ecan_config: &EcanConfig) -> CogL
     let new_count = space.size() - initial_size;
     let top = space.atoms_by_sti(1);
     let peak = if let Some(a) = top.first() {
-        format!("  |  Peak STI: {}({:.1})", space.format_atom(a.id), a.av.sti)
+        format!(
+            "  |  Peak STI: {}({:.1})",
+            space.format_atom(a.id),
+            a.av.sti
+        )
     } else {
         String::new()
     };

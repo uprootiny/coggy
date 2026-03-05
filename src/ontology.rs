@@ -35,10 +35,7 @@ pub fn load_base_ontology(space: &mut AtomSpace) -> usize {
     }
 
     // Predicate nodes
-    let predicates: &[(&str, f64, f64)] = &[
-        ("afraid-of", 0.80, 0.70),
-        ("resembles", 0.70, 0.50),
-    ];
+    let predicates: &[(&str, f64, f64)] = &[("afraid-of", 0.80, 0.70), ("resembles", 0.70, 0.50)];
 
     for &(name, s, c) in predicates {
         space.add_node(AtomType::PredicateNode, name, TruthValue::new(s, c));

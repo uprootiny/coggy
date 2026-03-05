@@ -107,6 +107,14 @@ It serves the Coggy canvas at `http://localhost:8421` (the live host uses `http:
 
 For multi-port demos, use `scripts/run-multi-web.sh` so you can bring up 8421, 8431, 8451, etc., simultaneously.
 
+While you’re on `https://umbra.hyperstitious.art`, the “Live focus snapshot” and “Trace replay” panels keep polling `/api/focus` and rerunning traces so every interactive view matches the data logged by the demo and benchmark scripts.
+
+## Coggy experiment stack
+
+Follow the three-layer rubric (`docs/coggy-three-layers.md`): benchmarks prove the trace prompts, diagnostics cover liveness/trace quality, and challenge drills rehearse recovery behaviors (no-user-response, first-blocker focus, model outage, contradictory contexts, stale-loop cleanup). Log every run (`logs/benchmarks-*.log`, `logs/demo-*.log`, `logs/experiments.csv`) and store the resulting evidence in breadcrumbs so Claude can replay the same measurements before making changes.
+
+The UI’s prompt grid now reads from `static/promptsets.json` so you can select canonical long prompts (legal, math, formal, smoke) and run them with a single click; those same prompts drive the benchmark runner, keeping UI tests and scripts aligned.
+
 ## Live demonstration
 
 For a quick demo that proves the landing page, API, and focus traces work together, run:

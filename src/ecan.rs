@@ -1,9 +1,9 @@
 //! ECAN — Economic Attention Network
 //! Spreads short-term importance (STI) through the hypergraph.
 
-use std::collections::{HashMap, HashSet};
 use crate::atom::AtomId;
 use crate::atomspace::AtomSpace;
+use std::collections::{HashMap, HashSet};
 
 pub struct EcanConfig {
     pub spread_fraction: f64,
@@ -59,8 +59,9 @@ pub fn spread_attention(
         if let Some(atom) = space.get_mut(id) {
             let boost = match atom.atom_type {
                 crate::atom::AtomType::ListLink => config.initial_sti,
-                crate::atom::AtomType::EvaluationLink
-                | crate::atom::AtomType::InheritanceLink => config.initial_sti * 0.85,
+                crate::atom::AtomType::EvaluationLink | crate::atom::AtomType::InheritanceLink => {
+                    config.initial_sti * 0.85
+                }
                 crate::atom::AtomType::ConceptNode => config.initial_sti * 0.95,
                 crate::atom::AtomType::PredicateNode => config.initial_sti * 0.5,
             };
@@ -144,4 +145,99 @@ pub fn spread_attention(
     }
 
     changes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::atom::*;
+    use crate::atomspace::AtomSpace;
+
+    fn tv(s: f64, c: f64) -> TruthValue {
+        TruthValue::new(s, c)
+    }
+
+    #[test]
+    fn boost_activated_atoms() {
+        let mut space = AtomSpace::new();
+        let (id, _) = space.add_node(AtomType::ConceptNode, "cat", tv(0.9, 0.8));
+        let config = EcanConfig::default();
+        let changes = spread_attention(&mut space, &[id], &config);
+        assert!(!changes.is_empty());
+        let sti = space.get(id).unwrap().av.sti;
+        assert!(sti > 30.0, "STI should be boosted, got {}", sti);
+    }
+
+    #[test]
+    fn decay_inactive_atoms() {
+        let mut space = AtomSpace::new();
+        let (id, _) = space.add_node(AtomType::ConceptNode, "cat", tv(0.9, 0.8));
+        let config = EcanConfig::default();
+        spread_attention(&mut space, &[id], &config);
+        let boosted = space.get(id).unwrap().av.sti;
+        // Spread with nothing activated — cat should decay
+        spread_attention(&mut space, &[], &config);
+        let decayed = space.get(id).unwrap().av.sti;
+        assert!(
+            decayed < boosted,
+            "STI should decay: {} -> {}",
+            boosted,
+            decayed
+        );
+    }
+
+    #[test]
+    fn spread_through_links() {
+        let mut space = AtomSpace::new();
+        let (a, _) = space.add_node(AtomType::ConceptNode, "cat", tv(0.9, 0.8));
+        let (b, _) = space.add_node(AtomType::ConceptNode, "mammal", tv(0.9, 0.8));
+        let (lid, _) = space.add_link(AtomType::InheritanceLink, vec![a, b], tv(0.95, 0.9));
+        let config = EcanConfig::default();
+        spread_attention(&mut space, &[lid], &config);
+        // Link spreads to its outgoing targets
+        assert!(space.get(a).unwrap().av.sti > 0.0, "cat should get spread");
+        assert!(
+            space.get(b).unwrap().av.sti > 0.0,
+            "mammal should get spread"
+        );
+    }
+
+    #[test]
+    fn zero_sti_atoms_stay_zero() {
+        let mut space = AtomSpace::new();
+        let (id, _) = space.add_node(AtomType::ConceptNode, "cat", tv(0.9, 0.8));
+        let config = EcanConfig::default();
+        // Spread with nothing activated — zero stays zero
+        spread_attention(&mut space, &[], &config);
+        assert!(space.get(id).unwrap().av.sti == 0.0);
+    }
+
+    #[test]
+    fn changes_report_old_and_new() {
+        let mut space = AtomSpace::new();
+        let (id, _) = space.add_node(AtomType::ConceptNode, "cat", tv(0.9, 0.8));
+        let config = EcanConfig::default();
+        let changes = spread_attention(&mut space, &[id], &config);
+        let change = changes.iter().find(|c| c.id == id).unwrap();
+        assert!(change.old < 0.01);
+        assert!(change.new_val > 30.0);
+        assert!(change.boosted());
+    }
+
+    #[test]
+    fn predicate_gets_lower_boost_than_concept() {
+        let mut space = AtomSpace::new();
+        let (cn, _) = space.add_node(AtomType::ConceptNode, "cat", tv(0.9, 0.8));
+        let (pn, _) = space.add_node(AtomType::PredicateNode, "likes", tv(0.7, 0.4));
+        let config = EcanConfig::default();
+        spread_attention(&mut space, &[cn, pn], &config);
+        let cn_sti = space.get(cn).unwrap().av.sti;
+        let pn_sti = space.get(pn).unwrap().av.sti;
+        assert!(
+            cn_sti > pn_sti,
+            "concept {} should get more STI than predicate {}",
+            cn_sti,
+            pn_sti
+        );
+    }
 }

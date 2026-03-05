@@ -18,7 +18,11 @@ pub struct ParseResult {
 impl ParseResult {
     /// IDs of atoms created for the first time
     pub fn new_ids(&self) -> Vec<AtomId> {
-        self.atoms.iter().filter(|a| a.is_new).map(|a| a.id).collect()
+        self.atoms
+            .iter()
+            .filter(|a| a.is_new)
+            .map(|a| a.id)
+            .collect()
     }
 
     /// All atom IDs referenced (new + existing)
@@ -51,7 +55,10 @@ pub fn parse_input(space: &mut AtomSpace, input: &str) -> ParseResult {
 
     // Pattern: "X is a/an Y"
     if let Some(pos) = words.iter().position(|&w| w == "is") {
-        if pos > 0 && pos + 2 <= words.len() - 1 && (words[pos + 1] == "a" || words[pos + 1] == "an") {
+        if pos > 0
+            && pos + 2 <= words.len() - 1
+            && (words[pos + 1] == "a" || words[pos + 1] == "an")
+        {
             let subj = words[..pos].join("-");
             let obj = words[pos + 2..].join("-");
             return make_inheritance(space, &subj, &obj);
@@ -89,19 +96,25 @@ pub fn parse_input(space: &mut AtomSpace, input: &str) -> ParseResult {
     // Two words: concepts + list
     if words.len() == 2 {
         let mut atoms = Vec::new();
-        let (id0, n0) = space.add_node(AtomType::ConceptNode, words[0], TruthValue::new(0.80, 0.50));
+        let (id0, n0) =
+            space.add_node(AtomType::ConceptNode, words[0], TruthValue::new(0.80, 0.50));
         atoms.push(ParsedAtom {
             id: id0,
             desc: format!("ConceptNode \"{}\"", words[0]),
             is_new: n0,
         });
-        let (id1, n1) = space.add_node(AtomType::ConceptNode, words[1], TruthValue::new(0.80, 0.50));
+        let (id1, n1) =
+            space.add_node(AtomType::ConceptNode, words[1], TruthValue::new(0.80, 0.50));
         atoms.push(ParsedAtom {
             id: id1,
             desc: format!("ConceptNode \"{}\"", words[1]),
             is_new: n1,
         });
-        let (lid, ln) = space.add_link(AtomType::ListLink, vec![id0, id1], TruthValue::new(0.0, 0.0));
+        let (lid, ln) = space.add_link(
+            AtomType::ListLink,
+            vec![id0, id1],
+            TruthValue::new(0.0, 0.0),
+        );
         atoms.push(ParsedAtom {
             id: lid,
             desc: format!("ListLink [{}\u{2192}{}]", words[0], words[1]),
@@ -199,4 +212,125 @@ fn make_evaluation(space: &mut AtomSpace, pred: &str, subj: &str, obj: &str) -> 
     });
 
     ParseResult { atoms }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::atomspace::AtomSpace;
+
+    #[test]
+    fn parse_isa() {
+        let mut s = AtomSpace::new();
+        let r = parse_input(&mut s, "cat is-a mammal");
+        assert_eq!(r.new_count(), 3);
+        assert!(s.find_node(AtomType::ConceptNode, "cat").is_some());
+        assert!(s.find_node(AtomType::ConceptNode, "mammal").is_some());
+        let cat = s.find_node(AtomType::ConceptNode, "cat").unwrap();
+        let mammal = s.find_node(AtomType::ConceptNode, "mammal").unwrap();
+        assert!(s
+            .find_link(AtomType::InheritanceLink, &[cat, mammal])
+            .is_some());
+    }
+
+    #[test]
+    fn parse_is_a_an() {
+        let mut s = AtomSpace::new();
+        parse_input(&mut s, "cat is a mammal");
+        let cat = s.find_node(AtomType::ConceptNode, "cat").unwrap();
+        let mammal = s.find_node(AtomType::ConceptNode, "mammal").unwrap();
+        assert!(s
+            .find_link(AtomType::InheritanceLink, &[cat, mammal])
+            .is_some());
+
+        let mut s2 = AtomSpace::new();
+        parse_input(&mut s2, "eagle is an animal");
+        let eagle = s2.find_node(AtomType::ConceptNode, "eagle").unwrap();
+        let animal = s2.find_node(AtomType::ConceptNode, "animal").unwrap();
+        assert!(s2
+            .find_link(AtomType::InheritanceLink, &[eagle, animal])
+            .is_some());
+    }
+
+    #[test]
+    fn parse_evaluation() {
+        let mut s = AtomSpace::new();
+        let r = parse_input(&mut s, "cat likes fish");
+        assert_eq!(r.new_count(), 5);
+        assert!(s.find_node(AtomType::ConceptNode, "cat").is_some());
+        assert!(s.find_node(AtomType::ConceptNode, "fish").is_some());
+        assert!(s.find_node(AtomType::PredicateNode, "likes").is_some());
+    }
+
+    #[test]
+    fn parse_what_is() {
+        let mut s = AtomSpace::new();
+        let r = parse_input(&mut s, "what is that");
+        assert_eq!(r.new_count(), 5);
+        assert!(s.find_node(AtomType::ConceptNode, "what").is_some());
+        assert!(s.find_node(AtomType::ConceptNode, "that").is_some());
+        assert!(s.find_node(AtomType::PredicateNode, "is").is_some());
+    }
+
+    #[test]
+    fn parse_what_can_you() {
+        let mut s = AtomSpace::new();
+        parse_input(&mut s, "what can you do");
+        assert!(s.find_node(AtomType::PredicateNode, "can-you").is_some());
+        assert!(s.find_node(AtomType::ConceptNode, "do").is_some());
+    }
+
+    #[test]
+    fn existing_node_not_counted_as_new() {
+        let mut s = AtomSpace::new();
+        s.add_node(AtomType::ConceptNode, "cat", TruthValue::new(0.9, 0.85));
+        let r = parse_input(&mut s, "cat is-a pet");
+        assert_eq!(r.new_count(), 2);
+    }
+
+    #[test]
+    fn strips_punctuation() {
+        let mut s = AtomSpace::new();
+        parse_input(&mut s, "what is that?");
+        assert!(s.find_node(AtomType::ConceptNode, "that").is_some());
+    }
+
+    #[test]
+    fn single_word() {
+        let mut s = AtomSpace::new();
+        let r = parse_input(&mut s, "hello");
+        assert_eq!(r.new_count(), 1);
+        assert!(s.find_node(AtomType::ConceptNode, "hello").is_some());
+    }
+
+    #[test]
+    fn two_words() {
+        let mut s = AtomSpace::new();
+        let r = parse_input(&mut s, "big cat");
+        assert_eq!(r.new_count(), 3);
+        assert!(s.find_node(AtomType::ConceptNode, "big").is_some());
+        assert!(s.find_node(AtomType::ConceptNode, "cat").is_some());
+    }
+
+    #[test]
+    fn empty_input() {
+        let mut s = AtomSpace::new();
+        let r = parse_input(&mut s, "");
+        assert_eq!(r.new_count(), 0);
+    }
+
+    #[test]
+    fn case_insensitive() {
+        let mut s = AtomSpace::new();
+        parse_input(&mut s, "Cat IS-A Mammal");
+        assert!(s.find_node(AtomType::ConceptNode, "cat").is_some());
+        assert!(s.find_node(AtomType::ConceptNode, "mammal").is_some());
+    }
+
+    #[test]
+    fn multiword_subject() {
+        let mut s = AtomSpace::new();
+        parse_input(&mut s, "flying fish is-a fish");
+        assert!(s.find_node(AtomType::ConceptNode, "flying-fish").is_some());
+    }
 }

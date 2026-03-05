@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Coggy · Systems Intelligence</title>
+    <style>
+      :root {
+        font-family: "Inter", "Space Grotesk", system-ui, sans-serif;
+        color: #f7fafc;
+        background: #040409;
+        --surface: #0c0c14;
+        --surface-strong: #171728;
+        --accent-ice: #8b5cff;
+        --accent-teal: #5eead4;
+        --glow: rgba(94, 234, 212, 0.4);
+        --card-shadow: 0 25px 50px rgba(3, 5, 13, 0.8);
+        --border-soft: rgba(255, 255, 255, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(circle at 30% -10%, rgba(139, 92, 246, 0.35), transparent 55%),
+          radial-gradient(circle at 70% 0%, rgba(94, 234, 212, 0.25), transparent 60%),
+          linear-gradient(180deg, #0f0f18 0%, #040409 60%);
+        color: inherit;
+        overflow-x: hidden;
+      }
+
+      main {
+        position: relative;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 3.5rem 1.5rem 5rem;
+      }
+
+      header {
+        text-align: center;
+        margin-bottom: 3rem;
+        position: relative;
+        z-index: 2;
+      }
+
+      .badge {
+        display: inline-flex;
+        padding: 0.35rem 0.9rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        font-size: 0.9rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        backdrop-filter: blur(6px);
+        background: rgba(5, 5, 10, 0.65);
+      }
+
+      h1 {
+        font-size: clamp(2.8rem, 4vw, 3.8rem);
+        margin: 0.8rem 0 0.6rem;
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+      }
+
+      p.lead {
+        max-width: 620px;
+        margin: 0 auto;
+        color: rgba(247, 250, 252, 0.85);
+        font-size: 1.15rem;
+        line-height: 1.6;
+      }
+
+      .actions {
+        margin-top: 2.5rem;
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+        position: relative;
+        z-index: 1;
+      }
+
+      .btn {
+        border-radius: 999px;
+        padding: 0.9rem 1.9rem;
+        font-size: 1rem;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+      }
+
+      .btn.primary {
+        background: linear-gradient(120deg, var(--accent-ice), var(--accent-teal));
+        color: #050508;
+        box-shadow: 0 18px 35px var(--glow);
+      }
+
+      .btn.secondary {
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        color: #f7fafc;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+      }
+
+      .btn:active {
+        transform: translateY(2px) scale(0.98);
+      }
+
+      .btn:hover {
+        transform: translateY(-2px) scale(1.01);
+      }
+
+      .interactive-sensor {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        mix-blend-mode: screen;
+        opacity: 0.75;
+      }
+
+      .orb {
+        position: absolute;
+        width: 420px;
+        height: 420px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(139, 92, 246, 0.35), transparent 70%);
+        filter: blur(0);
+        opacity: 0.2;
+        will-change: transform;
+        top: -80px;
+        left: calc(50% - 210px);
+      }
+
+      .tagline {
+        text-align: center;
+        margin-top: 1rem;
+        color: rgba(247, 250, 252, 0.65);
+        letter-spacing: 0.2em;
+        font-size: 0.8rem;
+      }
+
+      .status-bar {
+        margin: 3rem auto 2rem;
+        padding: 1rem 1.2rem;
+        border-radius: 1.5rem;
+        background: rgba(9, 10, 17, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        box-shadow: var(--card-shadow);
+      }
+
+      .status-bar strong {
+        font-size: 1.05rem;
+        letter-spacing: 0.08em;
+      }
+
+      .status-callout {
+        font-size: 0.95rem;
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      .grid {
+        display: grid;
+        gap: 1.8rem;
+        margin-top: 2rem;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      }
+
+      .card {
+        padding: 2rem;
+        border-radius: 1.4rem;
+        background: linear-gradient(160deg, rgba(8, 9, 16, 0.95), rgba(15, 15, 26, 0.75));
+        border: 1px solid var(--border-soft);
+        box-shadow: var(--card-shadow);
+        min-height: 240px;
+        position: relative;
+        overflow: hidden;
+        transition: transform 0.4s cubic-bezier(0.2, 1, 0.35, 1), box-shadow 0.4s ease;
+      }
+
+      .card::after {
+        content: "";
+        pointer-events: none;
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.08), transparent 40%);
+        opacity: 0;
+        transition: opacity 0.35s ease;
+      }
+
+      .card:hover {
+        transform: translateY(-12px) rotateX(2deg);
+        box-shadow: 0 35px 60px rgba(3, 5, 13, 0.9);
+      }
+
+      .card:hover::after {
+        opacity: 1;
+      }
+
+      .card-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .badge-pill {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.7rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        background: rgba(255, 255, 255, 0.05);
+        letter-spacing: 0.08em;
+      }
+
+      .card p {
+        color: rgba(247, 250, 252, 0.82);
+        line-height: 1.6;
+        margin: 0.75rem 0 0;
+      }
+
+      .action-list {
+        margin-top: 3rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1rem;
+      }
+
+      .prompt-grid {
+        margin-top: 2rem;
+        display: grid;
+        gap: 1rem;
+      }
+
+      .prompt-card {
+        border-radius: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(12, 12, 22, 0.95);
+        padding: 1.15rem;
+        display: grid;
+        gap: 0.5rem;
+        box-shadow: 0 15px 40px rgba(2, 3, 10, 0.8);
+      }
+
+      .prompt-card h4 {
+        margin: 0;
+        font-size: 1.1rem;
+        letter-spacing: 0.1em;
+      }
+
+      .prompt-card small {
+        letter-spacing: 0.2em;
+        color: rgba(255, 255, 255, 0.65);
+        text-transform: uppercase;
+      }
+
+      .prompt-card button {
+        border-radius: 0.75rem;
+        border: none;
+        padding: 0.55rem 0.9rem;
+        background: rgba(94, 234, 212, 0.08);
+        color: #f7fafc;
+        cursor: pointer;
+        align-self: flex-end;
+        transition: background 0.2s ease;
+      }
+
+      .prompt-card button:hover {
+        background: rgba(94, 234, 212, 0.2);
+      }
+
+      .prompt-status {
+        font-size: 0.9rem;
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      .live-grid {
+        margin-top: 3rem;
+        display: grid;
+        gap: 1.5rem;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      }
+
+      .live-panel {
+        background: rgba(16, 16, 26, 0.95);
+        border-radius: 1.2rem;
+        padding: 1.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 20px 45px rgba(3, 5, 13, 0.85);
+      }
+
+      .panel-title {
+        font-size: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        color: rgba(255, 255, 255, 0.6);
+        margin-bottom: 0.8rem;
+      }
+
+      .focus-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 0.3rem;
+      }
+
+      .focus-item {
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 0.9rem;
+        padding: 0.7rem 0.8rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.95rem;
+      }
+
+      .focus-item span:last-child {
+        font-weight: 700;
+        color: var(--accent-ice);
+      }
+
+      .trace-log {
+        max-height: 280px;
+        overflow: auto;
+        font-family: "Space Grotesk", "IBM Plex Mono", monospace;
+        font-size: 0.85rem;
+        line-height: 1.4;
+        color: rgba(247, 250, 252, 0.9);
+        background: rgba(5, 5, 10, 0.8);
+        border-radius: 1rem;
+        padding: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .trace-form {
+        display: flex;
+        gap: 0.6rem;
+        margin-bottom: 0.8rem;
+      }
+
+      .trace-input {
+        flex: 1;
+        border-radius: 0.8rem;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 0.65rem 0.9rem;
+        background: rgba(5, 5, 10, 0.9);
+        color: inherit;
+      }
+
+      .trace-submit {
+        border-radius: 0.8rem;
+        border: none;
+        background: rgba(94, 234, 212, 0.08);
+        color: #f7fafc;
+        padding: 0.65rem 1rem;
+        cursor: pointer;
+        transition: transform 0.2s ease;
+      }
+
+      .trace-submit:hover {
+        transform: translateY(-1px);
+      }
+
+      .action-pill {
+        border-radius: 1rem;
+        padding: 0.8rem 1rem;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px dashed rgba(255, 255, 255, 0.3);
+        color: rgba(247, 250, 252, 0.7);
+        font-size: 0.9rem;
+        letter-spacing: 0.05em;
+        transition: background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+      }
+
+      .action-pill:hover {
+        background: rgba(94, 234, 212, 0.08);
+        border-color: rgba(94, 234, 212, 0.5);
+        color: #f7fafc;
+      }
+
+      footer {
+        margin-top: 4rem;
+        text-align: center;
+        color: rgba(247, 250, 252, 0.55);
+        font-size: 0.9rem;
+      }
+
+      @media (max-width: 600px) {
+        main {
+          padding-top: 3rem;
+        }
+
+        .actions {
+          flex-direction: column;
+        }
+
+        .status-bar {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="orb" aria-hidden="true"></div>
+      <div class="interactive-sensor" aria-hidden="true"></div>
+      <header>
+        <span class="badge">Coggy</span>
+        <h1>Intelligence for living, breathing systems</h1>
+        <p class="lead">
+          Coggy pairs observability with generative insight so the infrastructure, experiments, and artistry
+          you cultivate stay coherent, traceable, and delightful. We merge declarative builds with expressive
+          interfaces so design, exploration, and deployment happen on a single, stateful canvas.
+        </p>
+        <div class="actions">
+          <button class="btn primary" onclick="window.open('/api/trace?input=cat is-a mammal','_blank')">Explore the Trace API</button>
+          <button class="btn secondary" onclick="window.location = '/api/health'">Check Live Health</button>
+        </div>
+      </header>
+
+      <div class="tagline">
+        Now serving at <strong>http://173.212.203.211:8421</strong> · APIs under <code>/api</code>
+      </div>
+
+      <section class="status-bar" aria-live="polite">
+        <strong id="status-label">Status · warming up engines</strong>
+        <span class="status-callout" id="status-detail">Loading attention weights…</span>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <div class="card-title">
+            <h3>Live deployment awareness</h3>
+            <span class="badge-pill">ACTIVE</span>
+          </div>
+          <p>
+            Clickable URLs, tmux status hooks, and breadcrumbs light up your active services so downtime feels audible.
+            Each card is layered to echo heaviness, elasticity, and traceable signal.
+          </p>
+        </article>
+        <article class="card">
+          <div class="card-title">
+            <h3>Experimentation as contract</h3>
+            <span class="badge-pill">MEASURE</span>
+          </div>
+          <p>
+            Unknowns are hypotheses; experiments live as traces. Set measurable levers, run the loop, and the AtomSpace
+            reflects the history you can examine in breadcrumbs and prompts.
+          </p>
+        </article>
+        <article class="card">
+          <div class="card-title">
+            <h3>Aesthetic meets architecture</h3>
+            <span class="badge-pill">HARMONY</span>
+          </div>
+          <p>
+            Hyperbolic canvases dance with declarative Nix builds, so every interaction carries weight, shadow, and a
+            sense of craft that matches rigorous structure.
+          </p>
+        </article>
+        <article class="card">
+          <div class="card-title">
+            <h3>Knowledge middleware</h3>
+            <span class="badge-pill">NODE</span>
+          </div>
+          <p>
+            AtomSpace feeds Claude, dashboards, and replicable intelligence through `/api/feed` and `/api/trace`. Each
+            response smudges light across the interface so you feel the connections.
+          </p>
+        </article>
+      </section>
+
+      <section class="action-list">
+        <div class="action-pill">Trace experiments and pin insights.</div>
+        <div class="action-pill">Surface clickable deployments in tmux status.</div>
+        <div class="action-pill">Document hypotheses in breadcrumbs.</div>
+        <div class="action-pill">Stream `/api/focus` into your dashboards.</div>
+      </section>
+
+      <section class="prompt-grid" id="prompt-grid" aria-live="polite">
+        <div class="prompt-card">
+          <h4>Loading prompt sets…</h4>
+          <p class="prompt-status">Fetch `/promptsets.json` to load curated traces.</p>
+        </div>
+      </section>
+
+      <div class="live-grid">
+        <div class="live-panel">
+          <div class="panel-title">Live focus snapshot</div>
+          <ul id="focus-list" class="focus-list">
+            <li class="focus-item"><span>Loading focus…</span></li>
+          </ul>
+        </div>
+        <div class="live-panel">
+          <div class="panel-title">Trace replay</div>
+          <div class="trace-form">
+            <input class="trace-input" id="trace-query" value="cat is-a mammal" />
+            <button class="trace-submit" id="trace-submit">Run trace</button>
+          </div>
+          <div id="trace-log" class="trace-log">Awaiting trace...</div>
+        </div>
+      </div>
+
+      <footer>
+        Crafted with purpose by Coggy · ready for Claude, Codex, and human collaborators alike.
+      </footer>
+    </main>
+    <script>
+      const orb = document.querySelector(".orb");
+      window.addEventListener("pointermove", (event) => {
+        const x = (event.clientX / window.innerWidth) * 100;
+        const y = (event.clientY / window.innerHeight) * 100;
+        orb.style.transform = `translate3d(${(x - 50) / 3}%, ${(y - 50) / 3}%, 0)`;
+      });
+
+      const focusList = document.getElementById("focus-list");
+      const traceLog = document.getElementById("trace-log");
+      const traceInput = document.getElementById("trace-query");
+      const traceButton = document.getElementById("trace-submit");
+
+      async function refreshStatus() {
+        const statusLabel = document.getElementById("status-label");
+        const statusDetail = document.getElementById("status-detail");
+        try {
+          const response = await fetch("/api/health");
+          if (!response.ok) throw new Error("health request failed");
+          const data = await response.json();
+          statusLabel.textContent = `Status · atoms ${data.atoms} · turn ${data.turn}`;
+          statusDetail.textContent = "Live health verified · click to re-validate.";
+        } catch (error) {
+          statusLabel.textContent = "Status · disconnected";
+          statusDetail.textContent = "Reconnect to the service or trigger a rebuild.";
+        }
+      }
+
+      async function refreshFocus() {
+        try {
+          const response = await fetch("/api/focus");
+          if (!response.ok) throw new Error("focus request failed");
+          const data = await response.json();
+          if (!data.focus.length) {
+            focusList.innerHTML = `<li class="focus-item"><span>Focus empty</span></li>`;
+            return;
+          }
+          focusList.innerHTML = data.focus.slice(0, 6).map((item) => {
+            return `<li class="focus-item"><span>${item.atom}</span><span>${item.sti.toFixed(1)}</span></li>`;
+          }).join("");
+        } catch (error) {
+          focusList.innerHTML = `<li class="focus-item"><span>Unable to load focus</span></li>`;
+        }
+      }
+
+      async function runTrace(input) {
+        traceLog.textContent = "Running trace…";
+        try {
+          const response = await fetch(`/api/trace?input=${encodeURIComponent(input)}`);
+          if (!response.ok) throw new Error("trace request failed");
+          const json = await response.json();
+          const lines = json.trace.map((step) => {
+            return `● ${step.phase}\n${step.lines.map((line) => `  ${line}`).join("\n")}`;
+          }).join("\n\n");
+          traceLog.textContent = `${lines}\n\nturn ${json.turn} · inferences ${json.inferences}`;
+        } catch (error) {
+          traceLog.textContent = "Trace failed, try another prompt.";
+        }
+      }
+
+      traceButton.addEventListener("click", () => {
+        runTrace(traceInput.value.trim() || "cat is-a mammal");
+      });
+
+      traceInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          traceButton.click();
+        }
+      });
+
+      async function loadPromptSets() {
+        const grid = document.getElementById("prompt-grid");
+        try {
+          const response = await fetch("/promptsets.json");
+          const prompts = await response.json();
+          grid.innerHTML = prompts
+            .map(
+              (prompt) => `
+              <div class="prompt-card">
+                <small>${prompt.category}</small>
+                <h4>${prompt.name}</h4>
+                <p>${prompt.goal}</p>
+                <p class="prompt-status">Input: ${prompt.input}</p>
+                <button data-input="${prompt.input}" data-name="${prompt.name}">Run trace</button>
+              </div>
+            `
+            )
+            .join("");
+          grid.querySelectorAll("button").forEach((button) => {
+            button.addEventListener("click", () => {
+              const input = button.getAttribute("data-input");
+              runTrace(input);
+            });
+          });
+        } catch (error) {
+          grid.innerHTML = `<div class="prompt-card"><h4>Prompt sets unavailable</h4><p class="prompt-status">Check /promptsets.json</p></div>`;
+        }
+      }
+
+      setInterval(refreshStatus, 120000);
+      refreshStatus();
+      refreshFocus();
+      setInterval(refreshFocus, 10000);
+      runTrace(traceInput.value);
+      loadPromptSets();
+    </script>
+  </body>
+</html>
